@@ -1,0 +1,45 @@
+# Research data: never commit individual-level or restricted data
+data/*
+!data/README.md
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.sav
+*.sas7bdat
+*.xpt
+*.dta
+*.rds
+*.RData
+*.Rdata
+*.rda
+*.parquet
+*.feather
+*.fst
+
+# R and RStudio local files
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj.user
+.Renviron
+
+# Credentials and secrets
+.env
+.env.*
+*.pem
+*.key
+credentials*
+secrets*
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Temporary and rendered files
+*.html
+*.log
+*.tmp
+~$*
