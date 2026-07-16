@@ -1,6 +1,7 @@
 ---
 title: "Dissertation Aim 1 Manuscript"
 author: "Sofia Bengoa"
+bibliography: references.bib
 format:
   docx:
     toc: false
