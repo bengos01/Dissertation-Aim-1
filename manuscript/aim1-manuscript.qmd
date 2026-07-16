@@ -15,11 +15,11 @@ execute:
 This Quarto file is the official working manuscript source for Aim 1.
 Write in RStudio and click Render to create a Word document.
 
-When ready to add citations:
-1. Export the Aim 1 references from EndNote as manuscript/references.bib.
-2. Add "bibliography: references.bib" to the YAML above.
-3. Cite sources using [@citationkey].
-4. Add a journal CSL file later if needed.
+Citation workflow:
+1. Maintain the master references in the EndNote group "Aim 1 Manuscript."
+2. Re-export that group to manuscript/references.bib whenever references change.
+3. Cite sources using [@citationkey] or insert them through RStudio's citation tool.
+4. Add a journal CSL file after the target journal is selected.
 -->
 
 # Abstract
@@ -90,4 +90,4 @@ Planned sensitivity analyses include alternative specifications of age at diagno
 
 # References
 
-[Generated automatically after references.bib is connected.]
+[Generated automatically from references.bib for sources cited in this manuscript.]

@@ -14,13 +14,13 @@ Use Notion for workflow, decisions, unresolved questions, and meeting notes. Do 
 
 ## Citations
 
-Keep managing references in EndNote. When you begin adding citations:
+The manuscript is connected to `references.bib`.
 
-1. Export only the references needed for Aim 1 as a BibTeX file named `references.bib`.
-2. Save it in this folder.
-3. Add `bibliography: references.bib` to the Quarto YAML.
-4. Cite sources in the manuscript as `[@citationkey]`.
-5. Add a journal `.csl` file later when a target journal is selected.
+1. Maintain the master references in the EndNote group **Aim 1 Manuscript**.
+2. When that group changes, export it again as BibTeX and replace `references.bib` in this folder.
+3. Cite sources as `[@citationkey]` or use RStudio's citation insertion tool.
+4. Render the manuscript to refresh the citations and reference list.
+5. Add a journal `.csl` file after the target journal is selected.
 
 ## Files that belong here
 
