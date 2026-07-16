@@ -56,7 +56,7 @@ Calendar year of diagnosis will be modeled continuously from 2005 through 2023 t
 
 ### Individual and structural characteristics
 
-Individual characteristics will include sex/gender, Indigenous identity, migration/nativity status, and education and/or occupation. Migration/nativity status is expected to be derived from country of origin and citizenship information and categorized as Chilean-born or migrant/immigrant [confirm available inputs and final definition]. Region of residence will represent the structural geographic context, with comunas aggregated into 16 administrative regions [confirm the comuna-to-region crosswalk and final number of comunas in the data]. The final education and occupation specifications will be based on conceptual relevance, data completeness, category frequencies, and model stability.
+Individual characteristics will include sex/gender, Indigenous identity, migration/nativity status, and insurance type. Migration/nativity status is expected to be derived from country of origin and citizenship information and categorized as Chilean-born or migrant/immigrant [confirm available inputs and final definition]. Insurance type will be categorized using the available registry coding [confirm categories and reference group]. Region of residence will represent the structural geographic context, with comunas aggregated into 16 administrative regions [confirm the comuna-to-region crosswalk and final number of comunas in the data].
 
 ## Statistical analysis
 
