@@ -1,0 +1,92 @@
+---
+title: "Dissertation Aim 1 Manuscript"
+author: "Sofia Bengoa"
+format:
+  docx:
+    toc: false
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+<!--
+This Quarto file is the official working manuscript source for Aim 1.
+Write in RStudio and click Render to create a Word document.
+
+When ready to add citations:
+1. Export the Aim 1 references from EndNote as manuscript/references.bib.
+2. Add "bibliography: references.bib" to the YAML above.
+3. Cite sources using [@citationkey].
+4. Add a journal CSL file later if needed.
+-->
+
+# Abstract
+
+[Draft after the analysis and target journal are established.]
+
+# Introduction
+
+[Develop from the dissertation proposal, using the current Aim 1 research question and only the citations needed for this paper.]
+
+# Methods
+
+## Study design and setting
+
+We will conduct a retrospective population-based cohort study of individuals diagnosed with first-episode non-affective psychotic disorder (NAPD) in Chile between January 1, 2005, and December 31, 2023. Chile's *Garantías Explícitas en Salud* (GES) program establishes guaranteed access to care for prioritized health conditions, including first-episode psychosis. Suspected cases are registered through the *Sistema de Información para la Gestión de Garantías en Salud* (SIGGES) and undergo psychiatric evaluation and follow-up to confirm the diagnosis.
+
+## Data source
+
+Data will come from the Fondo Nacional de Salud (FONASA) First Episode of Psychosis Registry within the Chile Mental Health Registry and SIGGES infrastructure. The registry contains information on clinical encounters, diagnosis, diagnostic setting, health-system type, and individual and structural characteristics. The proposal describes mandatory reporting from public and private health networks and approximately 95% population coverage [confirm the exact registry name, coverage, and public/private reporting scope with the data providers].
+
+## Study population and eligibility criteria
+
+The study population will include individuals aged 15–65 years who were registered with a first episode of NAPD, defined using International Classification of Diseases, 10th Revision codes F20–F29, between 2005 and 2023. Individuals younger than 15 years, older than 65 years, or missing age at diagnosis will be excluded from Aim 1. The proposal estimated a fixed eligible sample of 14,416 individuals [confirm after receipt and audit of the analytic data]. The record-level procedure used to identify a first episode and whether a washout period is relevant will be confirmed from the registry documentation.
+
+## Measures
+
+### Primary outcome
+
+The primary outcome will be age at diagnosis, treated as a continuous variable and used as recorded in the registry at the time of the first NAPD diagnosis. [Confirm the available age variable, its units, permissible range, missing-value coding, and whether it represents age at first suspected case, clinical evaluation, or confirmed diagnosis.]
+
+### Calendar time
+
+Calendar year of diagnosis will be modeled continuously from 2005 through 2023 to estimate the average annual change in age at diagnosis. [Confirm the date or year variable used to define diagnosis year.]
+
+### Individual and structural characteristics
+
+Individual characteristics will include sex/gender, Indigenous identity, migration/nativity status, and education and/or occupation. Migration/nativity status is expected to be derived from country of origin and citizenship information and categorized as Chilean-born or migrant/immigrant [confirm available inputs and final definition]. Region of residence will represent the structural geographic context, with comunas aggregated into 16 administrative regions [confirm the comuna-to-region crosswalk and final number of comunas in the data]. The final education and occupation specifications will be based on conceptual relevance, data completeness, category frequencies, and model stability.
+
+## Statistical analysis
+
+We will describe the analytic cohort overall and across calendar time using counts and percentages for categorical variables and appropriate measures of central tendency and dispersion for continuous variables. The distribution of age at diagnosis will be examined before selecting the final descriptive summaries.
+
+First, we will estimate the unadjusted temporal trend in mean age at diagnosis using linear regression with calendar year modeled continuously. The coefficient for calendar year will represent the estimated average annual change in age at diagnosis from 2005 through 2023.
+
+Second, we will fit a multivariable linear regression model to estimate adjusted associations between age at diagnosis and the individual and structural characteristics. We will then estimate the adjusted temporal trend by including calendar year and the core individual and structural characteristics in the same model.
+
+To evaluate whether associations between the characteristics and age at diagnosis varied over time, we will fit separate models containing an interaction between calendar year and each characteristic. Interactions will be assessed individually to support interpretation and reduce model complexity. Model-based mean ages, contrasts, and 95% confidence intervals will be estimated and visualized across calendar years.
+
+If sparse categories limit model stability, conceptually similar categories may be combined when substantively defensible. If category collapsing is not appropriate, standardized marginal mean ages may be estimated by group and calendar year, with bootstrap confidence intervals [retain only if needed after inspecting the data].
+
+Model diagnostics will include assessment of collinearity, linearity, residual distributions, and heteroskedasticity. [Specify the final diagnostic procedures and any robust standard-error approach before completing the analysis.]
+
+## Missing-data analysis
+
+The primary analysis will use complete cases. We will describe the amount and pattern of missingness in the outcome and covariates. Multiple imputation will be conducted as a secondary or sensitivity analysis, and results will be compared with the complete-case estimates. [Specify the imputation model, number of imputations, included variables, and pooling procedure after reviewing the data structure and missingness.]
+
+## Sensitivity analyses
+
+Planned sensitivity analyses include alternative specifications of age at diagnosis, such as age categories or quantile regression, to assess whether conclusions are sensitive to the linear-model specification. Additional analyses may compare alternative category groupings, standardized marginal estimates for sparse groups, and complete-case versus multiply imputed results. The final sensitivity analyses will be selected based on the observed data structure and documented before interpreting the primary results.
+
+# Results
+
+[Do not invent results. R-generated tables, figures, and numerical results will be inserted here after the data audit and analysis.]
+
+# Discussion
+
+[Draft after results are available. Use Notion for brief interpretation notes and decisions, then write the manuscript prose here.]
+
+# References
+
+[Generated automatically after references.bib is connected.]
