@@ -1,0 +1,697 @@
+---
+title: "Dissertation Aim 1 - Analysis"
+author: "Sofia Bengoa"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(knitr)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+```
+
+# 1. Import data and codebook
+
+This file contains the analysis workflow for Dissertation Aim 1.
+
+The current code uses the synthetic dataset. Code developed here will be updated and rerun using the real registry data after the initial descriptive and quality-control review is complete.
+
+```{r import-data}
+# ============================================================
+# FILE PATHS — UPDATE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+
+# ---- UPDATE PATH 1: DATASET ----
+data_file <- "data/raw/synthetic_data.csv"
+
+# ---- UPDATE PATH 2: MASTER CODEBOOK ----
+codebook_file <- "Dissertation_Aim1_Master_Codebook.xlsx"
+
+
+# ============================================================
+# IMPORT DATA AND CODEBOOK — NO PATH CHANGES NEEDED BELOW HERE
+# ============================================================
+
+# Import dataset
+dat <- read_csv(data_file)
+
+# Import codebook sheets
+region_codes  <- read_excel(codebook_file, sheet = "Region Codes")
+comuna_codes  <- read_excel(codebook_file, sheet = "Comuna Codes")
+closure_codes <- read_excel(codebook_file, sheet = "Closure Codes")
+country_codes <- read_excel(codebook_file, sheet = "Country Codes")
+```
+
+# 2. Create date and calendar year variables
+
+The variable `fecha_creacion_caso` contains the date of case creation as a character variable (for example, `10OCT2012`).
+
+This section converts it to an R date and derives calendar year.
+
+```{r create-date-year}
+dat <- dat %>%
+  mutate(
+    fecha_creacion_date = parse_date(
+      fecha_creacion_caso,
+      format = "%d%b%Y",
+      locale = locale("en")
+    ),
+    year = lubridate::year(fecha_creacion_date)
+  )
+```
+
+# 3. Define preliminary analytic sample
+
+The planned Aim 1 study population includes individuals ages 15–65 with case creation dates from 2005–2023.
+
+For now, the analytic sample is restricted only by age and calendar year.
+
+The appropriate FEP/NAPD case eligibility criterion based on IPD confirmation/discard status will be added after the IPD variables are clarified using the real registry data.
+
+## Sample flow
+
+The table below shows the number of observations remaining after applying the currently established eligibility criteria sequentially.
+
+```{r sample-flow}
+analytic_sample_flow <- tibble(
+  Step = c(
+    "Raw dataset",
+    "Age 15-65 years",
+    "Age 15-65 years and calendar year 2005-2023"
+  ),
+  N = c(
+    nrow(dat),
+
+    dat %>%
+      filter(
+        !is.na(edad_ano_creacion_caso),
+        between(edad_ano_creacion_caso, 15, 65)
+      ) %>%
+      nrow(),
+
+    dat %>%
+      filter(
+        !is.na(edad_ano_creacion_caso),
+        between(edad_ano_creacion_caso, 15, 65),
+        !is.na(year),
+        between(year, 2005, 2023)
+      ) %>%
+      nrow()
+  )
+)
+
+kable(analytic_sample_flow)
+```
+
+## Create preliminary analytic dataset
+
+The original imported dataset (`dat`) is preserved.
+
+A separate dataset called `analytic_dat` is created containing observations that meet the currently established age and calendar-year criteria.
+
+```{r create-analytic-dataset}
+analytic_dat <- dat %>%
+  filter(
+    !is.na(edad_ano_creacion_caso),
+    between(edad_ano_creacion_caso, 15, 65),
+    !is.na(year),
+    between(year, 2005, 2023)
+  )
+
+# ============================================================
+# TODO: ADD FINAL FEP/NAPD CASE ELIGIBILITY CRITERION HERE
+#
+# The appropriate use of ipd_cofirmado and/or ipd_descartado
+# will be determined after reviewing the real registry data.
+# ============================================================
+```
+
+## Verify sample restrictions
+
+These checks confirm that the age and calendar-year restrictions were applied as intended.
+
+```{r verify-restrictions}
+verification <- tibble(
+  Check = c(
+    "Number of observations",
+    "Minimum age",
+    "Maximum age",
+    "Earliest calendar year",
+    "Latest calendar year"
+  ),
+  Value = c(
+    nrow(analytic_dat),
+    min(analytic_dat$edad_ano_creacion_caso),
+    max(analytic_dat$edad_ano_creacion_caso),
+    min(analytic_dat$year),
+    max(analytic_dat$year)
+  )
+)
+
+kable(verification)
+```
+
+## Records by calendar year
+
+This table shows the number of observations in the preliminary analytic dataset for each calendar year.
+
+```{r records-by-year}
+analytic_dat %>%
+  count(year, name = "n") %>%
+  kable(
+    col.names = c("Calendar year", "n")
+  )
+```
+
+# 4. Create Aim 1 analysis variables
+
+This section creates clearly named analysis variables while preserving the original registry variables.
+
+At this stage, categories are retained as they appear in the source data. Categories may be collapsed later after reviewing the distributions in the real registry data.
+
+```{r analysis-variables}
+analytic_dat <- analytic_dat %>%
+  
+  # Add region labels
+  left_join(
+    region_codes,
+    by = c("cmd_cod_deis_regi_benef" = "Region Code")
+  ) %>%
+  
+  # Add country-of-origin labels
+  left_join(
+    country_codes,
+    by = c("cmd_cod_pais_origen" = "Country Code")
+  ) %>%
+  
+  mutate(
+    
+    # -------------------------
+    # Outcome
+    # -------------------------
+    age = edad_ano_creacion_caso,
+    
+    # -------------------------
+    # Primary exposure
+    # -------------------------
+    calendar_year = year,
+    
+    # -------------------------
+    # Individual characteristics
+    # -------------------------
+    sex = if_else(
+      is.na(cmd_sexo_benef),
+      "Missing",
+      cmd_sexo_benef
+    ),
+    
+    chilean_foreign = if_else(
+      is.na(cmd_cond_chile_extranj),
+      "Missing",
+      cmd_cond_chile_extranj
+    ),
+    
+    fonasa_tramo = if_else(
+      is.na(cmd_carga_tramo_benef),
+      "Missing",
+      cmd_carga_tramo_benef
+    ),
+    
+    country_origin = case_when(
+      is.na(cmd_cod_pais_origen) ~ "Missing",
+      is.na(`Country Name`) ~ paste0(
+        "Unmapped code: ", cmd_cod_pais_origen
+      ),
+      TRUE ~ `Country Name`
+    ),
+    
+    # -------------------------
+    # Structural characteristic
+    # -------------------------
+    region = case_when(
+      is.na(cmd_cod_deis_regi_benef) ~ "Missing",
+      is.na(`Region name`) ~ paste0(
+        "Unmapped code: ", cmd_cod_deis_regi_benef
+      ),
+      TRUE ~ `Region name`
+    ),
+    
+    # -------------------------
+    # Clinical setting variables
+    # Retained for descriptive purposes
+    # -------------------------
+    establishment_level = if_else(
+      is.na(desc_nivel_estab_crea_caso),
+      "Missing",
+      desc_nivel_estab_crea_caso
+    ),
+    
+    establishment_type = if_else(
+      is.na(desc_tipo_estab_crea_caso),
+      "Missing",
+      desc_tipo_estab_crea_caso
+    ),
+    
+    # -------------------------
+    # Case status variables
+    # -------------------------
+    ipd_confirmed = if_else(
+      is.na(ipd_cofirmado),
+      "Missing",
+      ipd_cofirmado
+    ),
+    
+    ipd_discarded = if_else(
+      is.na(ipd_descartado),
+      "Missing",
+      ipd_descartado
+    )
+  )
+```
+
+# 5. Descriptive characteristics of preliminary analytic sample
+
+For now, this section provides a broad descriptive summary of the preliminary analytic sample.
+
+Categories are intentionally not collapsed at this stage.
+
+## Overall sample size
+
+```{r table1-n}
+table1_n <- tibble(
+  Characteristic = "Total analytic sample",
+  Category = "",
+  n = nrow(analytic_dat),
+  Percent = NA_real_
+)
+
+kable(table1_n)
+```
+
+## Age
+
+```{r table1-age}
+age_table <- tibble(
+  Characteristic = c(
+    "Age",
+    "Age",
+    "Age",
+    "Age",
+    "Age"
+  ),
+  Category = c(
+    "Mean (SD)",
+    "Median",
+    "Minimum",
+    "Maximum",
+    "Missing"
+  ),
+  Value = c(
+    paste0(
+      round(mean(analytic_dat$age, na.rm = TRUE), 1),
+      " (",
+      round(sd(analytic_dat$age, na.rm = TRUE), 1),
+      ")"
+    ),
+    round(median(analytic_dat$age, na.rm = TRUE), 1),
+    min(analytic_dat$age, na.rm = TRUE),
+    max(analytic_dat$age, na.rm = TRUE),
+    sum(is.na(analytic_dat$age))
+  )
+)
+
+kable(age_table)
+```
+
+## Helper function for categorical characteristics
+
+```{r table1-helper}
+table1_cat <- function(data, variable, characteristic_name) {
+  
+  data %>%
+    count({{ variable }}, name = "n") %>%
+    mutate(
+      Characteristic = characteristic_name,
+      Category = as.character({{ variable }}),
+      Percent = round(100 * n / sum(n), 1)
+    ) %>%
+    select(
+      Characteristic,
+      Category,
+      n,
+      Percent
+    )
+}
+```
+
+## Individual characteristics
+
+```{r table1-individual}
+table1_individual <- bind_rows(
+  
+  table1_cat(
+    analytic_dat,
+    sex,
+    "Sex"
+  ),
+  
+  table1_cat(
+    analytic_dat,
+    chilean_foreign,
+    "Chilean/foreign status"
+  ),
+  
+  table1_cat(
+    analytic_dat,
+    country_origin,
+    "Country of origin"
+  ),
+  
+  table1_cat(
+    analytic_dat,
+    fonasa_tramo,
+    "FONASA beneficiary tramo"
+  )
+)
+
+kable(
+  table1_individual,
+  col.names = c(
+    "Characteristic",
+    "Category",
+    "n",
+    "%"
+  )
+)
+```
+
+## Structural characteristics
+
+```{r table1-structural}
+table1_structural <- table1_cat(
+  analytic_dat,
+  region,
+  "Region of residence"
+)
+
+kable(
+  table1_structural,
+  col.names = c(
+    "Characteristic",
+    "Category",
+    "n",
+    "%"
+  )
+)
+```
+
+## Clinical setting
+
+These variables are not necessarily primary Aim 1 covariates but are retained here to provide a broad description of the analytic sample.
+
+```{r table1-setting}
+table1_setting <- bind_rows(
+  
+  table1_cat(
+    analytic_dat,
+    establishment_level,
+    "Level of establishment creating case"
+  ),
+  
+  table1_cat(
+    analytic_dat,
+    establishment_type,
+    "Type of establishment creating case"
+  )
+)
+
+kable(
+  table1_setting,
+  col.names = c(
+    "Characteristic",
+    "Category",
+    "n",
+    "%"
+  )
+)
+```
+
+## IPD status
+
+IPD status is shown descriptively for now. These variables are not yet being used to restrict the analytic sample.
+
+```{r table1-ipd}
+table1_ipd <- bind_rows(
+  
+  table1_cat(
+    analytic_dat,
+    ipd_confirmed,
+    "IPD confirmed"
+  ),
+  
+  table1_cat(
+    analytic_dat,
+    ipd_discarded,
+    "IPD discarded"
+  )
+)
+
+kable(
+  table1_ipd,
+  col.names = c(
+    "Characteristic",
+    "Category",
+    "n",
+    "%"
+  )
+)
+```
+
+# 6. Descriptive temporal trends
+
+This section examines changes in age at diagnosis/case creation across calendar years.
+
+## Age at diagnosis by calendar year
+
+```{r age-by-year}
+age_by_year <- analytic_dat %>%
+  group_by(calendar_year) %>%
+  summarise(
+    n = n(),
+    mean_age = mean(age, na.rm = TRUE),
+    sd_age = sd(age, na.rm = TRUE),
+    median_age = median(age, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+kable(
+  age_by_year,
+  digits = 1,
+  col.names = c(
+    "Calendar year",
+    "n",
+    "Mean age",
+    "SD",
+    "Median age"
+  )
+)
+```
+
+## Overall mean age trend
+
+```{r mean-age-trend}
+ggplot(
+  age_by_year,
+  aes(
+    x = calendar_year,
+    y = mean_age
+  )
+) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(
+    breaks = seq(2005, 2023, by = 2)
+  ) +
+  labs(
+    title = "Mean Age at Diagnosis by Calendar Year",
+    x = "Calendar year",
+    y = "Mean age at diagnosis"
+  ) +
+  theme_minimal()
+```
+
+## Median age trend
+
+```{r median-age-trend}
+ggplot(
+  age_by_year,
+  aes(
+    x = calendar_year,
+    y = median_age
+  )
+) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(
+    breaks = seq(2005, 2023, by = 2)
+  ) +
+  labs(
+    title = "Median Age at Diagnosis by Calendar Year",
+    x = "Calendar year",
+    y = "Median age at diagnosis"
+  ) +
+  theme_minimal()
+```
+
+## Mean age trend by sex
+
+```{r age-trend-sex}
+age_by_year_sex <- analytic_dat %>%
+  group_by(
+    calendar_year,
+    sex
+  ) %>%
+  summarise(
+    n = n(),
+    mean_age = mean(age, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(
+  age_by_year_sex,
+  aes(
+    x = calendar_year,
+    y = mean_age,
+    group = sex,
+    linetype = sex
+  )
+) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(
+    breaks = seq(2005, 2023, by = 2)
+  ) +
+  labs(
+    title = "Mean Age at Diagnosis by Sex and Calendar Year",
+    x = "Calendar year",
+    y = "Mean age at diagnosis",
+    linetype = "Sex"
+  ) +
+  theme_minimal()
+```
+
+## Mean age trend by Chilean/foreign status
+
+```{r age-trend-migration}
+age_by_year_migration <- analytic_dat %>%
+  group_by(
+    calendar_year,
+    chilean_foreign
+  ) %>%
+  summarise(
+    n = n(),
+    mean_age = mean(age, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(
+  age_by_year_migration,
+  aes(
+    x = calendar_year,
+    y = mean_age,
+    group = chilean_foreign,
+    linetype = chilean_foreign
+  )
+) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(
+    breaks = seq(2005, 2023, by = 2)
+  ) +
+  labs(
+    title = "Mean Age at Diagnosis by Chilean/Foreign Status and Calendar Year",
+    x = "Calendar year",
+    y = "Mean age at diagnosis",
+    linetype = "Status"
+  ) +
+  theme_minimal()
+```
+
+# 7. Aim 1 regression models
+
+The planned Aim 1 regression analysis will evaluate temporal trends in age at diagnosis and whether those trends vary across individual and structural characteristics.
+
+## Model 1: Unadjusted temporal trend
+
+This model will estimate the annual change in age at diagnosis/case creation.
+
+Outcome: age at diagnosis/case creation
+
+Exposure: calendar year
+
+```{r model-1}
+# ============================================================
+# TO DO:
+# Unadjusted annual change in age at diagnosis
+#
+# Planned form:
+# lm(age ~ year, data = analytic_dat)
+# ============================================================
+```
+
+## Model 2: Adjusted correlates
+
+This model will estimate adjusted mean differences in age at diagnosis according to the individual and structural characteristics without including calendar year.
+
+```{r model-2}
+# ============================================================
+# TO DO:
+# Adjusted associations between Aim 1 characteristics
+# and age at diagnosis
+# ============================================================
+```
+
+## Model 3: Adjusted temporal trend
+
+This model will estimate annual change in age at diagnosis after adjustment for the Aim 1 individual and structural characteristics.
+
+```{r model-3}
+# ============================================================
+# TO DO:
+# Adjusted annual change in age at diagnosis
+# ============================================================
+```
+
+## Model 4: Effect modification of temporal trends
+
+Interaction terms between calendar year and the Aim 1 characteristics will be used to evaluate whether annual changes in age at diagnosis differ across groups.
+
+```{r model-4}
+# ============================================================
+# TO DO:
+# Add year × characteristic interaction terms
+# ============================================================
+```
+
+# 8. Model diagnostics and sensitivity analyses
+
+Model diagnostics and any appropriate sensitivity analyses will be added after the primary models are specified.
+
+```{r diagnostics}
+# ============================================================
+# TO DO:
+# Model diagnostics
+# Sensitivity analyses, as appropriate
+# ============================================================
+```

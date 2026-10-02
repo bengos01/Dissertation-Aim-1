@@ -24,11 +24,29 @@ knitr::opts_chunk$set(
 # 1. Import data and codebook
 
 ```{r import-data}
-# Change only this line when running on the real dataset
-dat <- read_csv("data/raw/synthetic_data.csv")
+# ============================================================
+# FILE PATHS — UPDATE THESE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+#
+# The paths below are relative to Sofia's Dissertation-Aim-1
+# project folder. When running this file on another computer,
+# replace BOTH paths below with the locations of:
+#   1. the real registry dataset
+#   2. the master codebook
+#
 
-# Master codebook
+# ---- UPDATE PATH 1: DATASET ----
+data_file <- "data/raw/synthetic_data.csv"
+
+# ---- UPDATE PATH 2: MASTER CODEBOOK ----
 codebook_file <- "Dissertation_Aim1_Master_Codebook.xlsx"
+
+
+# ============================================================
+# IMPORT DATA AND CODEBOOK — NO PATH CHANGES NEEDED BELOW HERE
+# ============================================================
+
+dat <- read_csv(data_file)
 
 region_codes  <- read_excel(codebook_file, sheet = "Region Codes")
 comuna_codes  <- read_excel(codebook_file, sheet = "Comuna Codes")
@@ -101,7 +119,7 @@ kable(overview)
 glimpse(dat)
 ```
 
-# 4. Age at case creation
+# 4.  Age at case creation
 
 ```{r age-summary}
 age_summary <- tibble(
@@ -146,6 +164,46 @@ bar_plot(
 )
 ```
 
+## Country of origin
+
+```{r country-origin}
+country_display <- dat %>%
+  left_join(
+    country_codes,
+    by = c("cmd_cod_pais_origen" = "Country Code")
+  ) %>%
+  mutate(
+    country_label = case_when(
+      is.na(cmd_cod_pais_origen) ~ "Missing",
+      is.na(`Country Name`) ~ paste0(
+        "Unmapped code: ", cmd_cod_pais_origen
+      ),
+      TRUE ~ `Country Name`
+    )
+  )
+
+country_summary <- country_display %>%
+  count(country_label, name = "n") %>%
+  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  arrange(desc(n))
+
+cat("Number of unique non-missing country codes:",
+    n_distinct(dat$cmd_cod_pais_origen, na.rm = TRUE), "\n\n")
+
+kable(country_summary,
+      col.names = c("Country of origin", "n", "%"))
+
+ggplot(country_summary, aes(x = reorder(country_label, n), y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Country of Origin",
+    x = "Country",
+    y = "Number of records"
+  ) +
+  theme_minimal()
+```
+
 ## Sex
 
 ```{r sex}
@@ -168,7 +226,7 @@ bar_plot(
 )
 ```
 
-# 6. Geography
+# 6. Structural Characteristics
 
 ## Region of residence
 
@@ -237,7 +295,7 @@ kable(comuna_summary,
 
 *No comuna bar plot is shown because there are many comuna categories; the complete frequency table is more interpretable.*
 
-# 7. Establishment characteristics
+# 7. Pathway to mental healthcare / clinical setting of diagnosis
 
 ## Level of establishment creating case
 
@@ -322,47 +380,32 @@ kable(freq_table(dat, ipd_descartado),
 bar_plot(dat, ipd_descartado, "IPD Discarded", "Status")
 ```
 
-# 9. Country of origin
+## IPD confirmed × discarded cross-tab
 
-```{r country-origin}
-country_display <- dat %>%
-  left_join(
-    country_codes,
-    by = c("cmd_cod_pais_origen" = "Country Code")
-  ) %>%
+This cross-tab is a QC check to show how the two IPD status variables occur together. It does not define the analytic sample or recode either variable.
+
+```{r ipd-cross-tab}
+ipd_cross_tab <- dat %>%
   mutate(
-    country_label = case_when(
-      is.na(cmd_cod_pais_origen) ~ "Missing",
-      is.na(`Country Name`) ~ paste0(
-        "Unmapped code: ", cmd_cod_pais_origen
-      ),
-      TRUE ~ `Country Name`
+    ipd_confirmed_display = if_else(
+      is.na(ipd_cofirmado), "Missing", ipd_cofirmado
+    ),
+    ipd_discarded_display = if_else(
+      is.na(ipd_descartado), "Missing", ipd_descartado
     )
-  )
-
-country_summary <- country_display %>%
-  count(country_label, name = "n") %>%
-  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  ) %>%
+  count(ipd_confirmed_display, ipd_discarded_display, name = "n") %>%
+  mutate(percent = round(100 * n / nrow(dat), 1)) %>%
   arrange(desc(n))
 
-cat("Number of unique non-missing country codes:",
-    n_distinct(dat$cmd_cod_pais_origen, na.rm = TRUE), "\n\n")
-
-kable(country_summary,
-      col.names = c("Country of origin", "n", "%"))
-
-ggplot(country_summary, aes(x = reorder(country_label, n), y = n)) +
-  geom_col() +
-  coord_flip() +
-  labs(
-    title = "Country of Origin",
-    x = "Country",
-    y = "Number of records"
-  ) +
-  theme_minimal()
+kable(
+  ipd_cross_tab,
+  col.names = c("IPD confirmed", "IPD discarded", "n", "% of all records")
+)
 ```
 
-# 10. Date and calendar year
+
+# 9. Date and calendar year
 
 ```{r date-year}
 fecha_creacion_date <- readr::parse_date(
@@ -422,7 +465,7 @@ ggplot(year_summary, aes(x = year, y = n)) +
   theme_minimal()
 ```
 
-# 11. QC flags for planned Aim 1 population
+# 10. QC flags for planned Aim 1 population
 
 These checks identify records requiring review. They do not remove or alter any observations.
 
@@ -435,7 +478,8 @@ qc_summary <- tibble(
     "Year after 2023",
     "Missing age",
     "Missing case creation date",
-    "Unmapped region code"
+    "Unmapped region code",
+    "Unmapped country code"
   ),
   n = c(
     sum(dat$edad_ano_creacion_caso < 15, na.rm = TRUE),
@@ -447,6 +491,10 @@ qc_summary <- tibble(
     sum(
       !is.na(dat$cmd_cod_deis_regi_benef) &
       is.na(region_display$`Region name`)
+    ),
+    sum(
+      !is.na(dat$cmd_cod_pais_origen) &
+      is.na(country_display$`Country Name`)
     )
   )
 )
@@ -454,7 +502,7 @@ qc_summary <- tibble(
 kable(qc_summary)
 ```
 
-# 12. Missingness summary
+# 11. Missingness summary
 
 ```{r missingness}
 missing_summary <- tibble(
@@ -469,4 +517,25 @@ missing_summary <- tibble(
 
 kable(missing_summary,
       col.names = c("Variable", "Missing n", "Missing %"))
+```
+
+## Blank or whitespace-only values
+
+```{r blank-check}
+blank_check <- dat %>%
+  select(where(is.character)) %>%
+  summarise(
+    across(
+      everything(),
+      ~ sum(!is.na(.x) & trimws(.x) == "")
+    )
+  ) %>%
+  pivot_longer(
+    everything(),
+    names_to = "Variable",
+    values_to = "Blank_n"
+  ) %>%
+  filter(Blank_n > 0)
+
+kable(blank_check)
 ```

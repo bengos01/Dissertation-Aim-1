@@ -1,0 +1,271 @@
+---
+title: "Dissertation Aim 1 - Duplicates Review"
+author: "Sofia Bengoa"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(knitr)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+```
+
+# 1. Import data
+
+This file examines individuals with multiple records in the registry to help determine how repeated records should be handled when defining the final Aim 1 analytic sample.
+
+No records are excluded or altered in this review.
+
+```{r import-data}
+# ============================================================
+# FILE PATH — UPDATE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+
+data_file <- "data/raw/synthetic_data.csv"
+
+# ============================================================
+# IMPORT DATA
+# ============================================================
+
+dat <- read_csv(data_file)
+```
+
+# 2. Create date and calendar year variables
+
+The variable `fecha_creacion_caso` contains the date of case creation as a character variable.
+
+This section converts it to an R date and derives calendar year.
+
+```{r create-date-year}
+dat <- dat %>%
+  mutate(
+    fecha_creacion_date = parse_date(
+      fecha_creacion_caso,
+      format = "%d%b%Y",
+      locale = locale("en")
+    ),
+    year = lubridate::year(fecha_creacion_date)
+  )
+```
+
+# 3. Investigate individuals with multiple records
+
+The registry contains some individuals with more than one record. This section examines the frequency and characteristics of these repeated records before any decisions are made about which records should be included in the final Aim 1 analytic sample.
+
+No records are removed at this stage.
+
+## Summary of repeated records
+
+```{r repeated-records-summary}
+record_counts <- dat %>%
+  count(id_persona, name = "n_records")
+
+repeated_record_summary <- tibble(
+  Measure = c(
+    "Total records",
+    "Unique individuals",
+    "Individuals with >1 record",
+    "Records belonging to individuals with >1 record",
+    "Maximum records for one individual"
+  ),
+  Value = c(
+    nrow(dat),
+    n_distinct(dat$id_persona),
+    sum(record_counts$n_records > 1),
+    sum(record_counts$n_records[record_counts$n_records > 1]),
+    max(record_counts$n_records)
+  )
+)
+
+kable(repeated_record_summary)
+```
+
+## Number of records per individual
+
+```{r records-per-person}
+record_counts %>%
+  count(n_records, name = "n_individuals") %>%
+  arrange(n_records) %>%
+  kable(
+    col.names = c(
+      "Number of records per individual",
+      "Number of individuals"
+    )
+  )
+```
+
+## Examine repeated records
+
+The table below displays records belonging to individuals who appear more than once in the registry.
+
+The purpose is to examine whether repeated records differ in case creation date, age, IPD status, or establishment characteristics.
+
+```{r examine-repeated-records}
+repeated_records <- dat %>%
+  semi_join(
+    record_counts %>% filter(n_records > 1),
+    by = "id_persona"
+  ) %>%
+  arrange(id_persona, fecha_creacion_date) %>%
+  select(
+    id_persona,
+    fecha_creacion_caso,
+    fecha_creacion_date,
+    year,
+    edad_ano_creacion_caso,
+    ipd_cofirmado,
+    ipd_descartado,
+    desc_nivel_estab_crea_caso,
+    desc_tipo_estab_crea_caso
+  )
+
+head(repeated_records, 50) %>%
+  kable()
+```
+
+# 4. Compare repeated records within individuals
+
+This section summarizes whether the repeated records for the same individual differ in case date, age, IPD status, or establishment characteristics.
+
+```{r duplicate-patterns}
+duplicate_patterns <- repeated_records %>%
+  group_by(id_persona) %>%
+  summarise(
+    n_records = n(),
+    n_unique_dates = n_distinct(fecha_creacion_date),
+    n_unique_ages = n_distinct(edad_ano_creacion_caso),
+    n_unique_ipd_confirmed = n_distinct(
+      ipd_cofirmado,
+      na.rm = TRUE
+    ),
+    n_unique_ipd_discarded = n_distinct(
+      ipd_descartado,
+      na.rm = TRUE
+    ),
+    n_unique_establishment_levels = n_distinct(
+      desc_nivel_estab_crea_caso,
+      na.rm = TRUE
+    ),
+    n_unique_establishment_types = n_distinct(
+      desc_tipo_estab_crea_caso,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+duplicate_pattern_summary <- duplicate_patterns %>%
+  summarise(
+    duplicated_individuals = n(),
+    different_case_dates = sum(n_unique_dates > 1),
+    different_ages = sum(n_unique_ages > 1),
+    different_ipd_confirmed = sum(n_unique_ipd_confirmed > 1),
+    different_ipd_discarded = sum(n_unique_ipd_discarded > 1),
+    different_establishment_levels =
+      sum(n_unique_establishment_levels > 1),
+    different_establishment_types =
+      sum(n_unique_establishment_types > 1)
+  )
+
+kable(
+  duplicate_pattern_summary,
+  col.names = c(
+    "Duplicated individuals",
+    "Different case dates",
+    "Different ages",
+    "Different IPD confirmed status",
+    "Different IPD discarded status",
+    "Different establishment levels",
+    "Different establishment types"
+  )
+)
+```
+
+# 5. Repeated individuals with changing IPD status
+
+This section displays examples of individuals whose IPD confirmation or discard status changes across records.
+
+```{r changing-ipd}
+changing_ipd_ids <- duplicate_patterns %>%
+  filter(
+    n_unique_ipd_confirmed > 1 |
+    n_unique_ipd_discarded > 1
+  ) %>%
+  pull(id_persona)
+
+changing_ipd_records <- repeated_records %>%
+  filter(id_persona %in% changing_ipd_ids) %>%
+  arrange(id_persona, fecha_creacion_date)
+
+head(changing_ipd_records, 100) %>%
+  kable()
+```
+
+# 6. Repeated individuals with different case dates
+
+This section displays examples of individuals whose records occur on different case creation dates.
+
+```{r different-dates}
+different_date_ids <- duplicate_patterns %>%
+  filter(n_unique_dates > 1) %>%
+  pull(id_persona)
+
+different_date_records <- repeated_records %>%
+  filter(id_persona %in% different_date_ids) %>%
+  arrange(id_persona, fecha_creacion_date)
+
+head(different_date_records, 100) %>%
+  kable()
+```
+
+# 7. Time between repeated records
+
+This section examines the amount of time between consecutive case creation dates for individuals with multiple records.
+
+```{r time-between-records}
+if (nrow(repeated_records) > 0) {
+
+  time_between_records <- repeated_records %>%
+    group_by(id_persona) %>%
+    arrange(fecha_creacion_date, .by_group = TRUE) %>%
+    mutate(
+      days_since_previous_record = as.numeric(
+        fecha_creacion_date - lag(fecha_creacion_date)
+      )
+    ) %>%
+    ungroup()
+
+  time_between_records %>%
+    filter(!is.na(days_since_previous_record)) %>%
+    summarise(
+      n_intervals = n(),
+      minimum_days = min(days_since_previous_record),
+      median_days = median(days_since_previous_record),
+      mean_days = round(mean(days_since_previous_record), 1),
+      maximum_days = max(days_since_previous_record)
+    ) %>%
+    kable(
+      col.names = c(
+        "Number of intervals",
+        "Minimum days",
+        "Median days",
+        "Mean days",
+        "Maximum days"
+      )
+    )
+
+} else {
+
+  cat("No individuals with multiple records were identified.")
+
+}
+```

@@ -1,0 +1,250 @@
+---
+title: "Dissertation Aim 1 - Analytic Sample"
+author: "Sofia Bengoa"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(knitr)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+```
+
+# 1. Import data and codebook
+
+This file contains the analysis workflow for Dissertation Aim 1.
+
+The current code uses the synthetic dataset. Code developed here will be updated and rerun using the real registry data after the initial descriptive and quality-control review is complete.
+
+```{r import-data}
+# ============================================================
+# FILE PATHS — UPDATE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+
+# ---- UPDATE PATH 1: DATASET ----
+data_file <- "data/raw/synthetic_data.csv"
+
+# ---- UPDATE PATH 2: MASTER CODEBOOK ----
+codebook_file <- "Dissertation_Aim1_Master_Codebook.xlsx"
+
+
+# ============================================================
+# IMPORT DATA AND CODEBOOK — NO PATH CHANGES NEEDED BELOW HERE
+# ============================================================
+
+# Import dataset
+dat <- read_csv(data_file)
+
+# Import codebook sheets
+region_codes  <- read_excel(codebook_file, sheet = "Region Codes")
+comuna_codes  <- read_excel(codebook_file, sheet = "Comuna Codes")
+closure_codes <- read_excel(codebook_file, sheet = "Closure Codes")
+country_codes <- read_excel(codebook_file, sheet = "Country Codes")
+```
+
+# 2. Create date and calendar year variables
+
+The variable `fecha_creacion_caso` contains the date of case creation as a character variable (for example, `10OCT2012`).
+
+This section converts it to an R date and derives calendar year.
+
+```{r create-date-year}
+dat <- dat %>%
+  mutate(
+    fecha_creacion_date = parse_date(
+      fecha_creacion_caso,
+      format = "%d%b%Y",
+      locale = locale("en")
+    ),
+    year = lubridate::year(fecha_creacion_date)
+  )
+```
+
+# 3. Define preliminary analytic sample
+
+The planned Aim 1 study population includes individuals ages 15–65 with case creation dates from 2005–2023.
+
+For now, the analytic sample is restricted only by age and calendar year.
+
+The appropriate FEP/NAPD case eligibility criterion based on IPD confirmation/discard status will be added after the IPD variables are clarified using the real registry data.
+
+## Sample flow
+
+The table below shows the number of observations remaining after applying the currently established eligibility criteria sequentially.
+
+```{r sample-flow}
+analytic_sample_flow <- tibble(
+  Step = c(
+    "Raw dataset",
+    "Age 15-65 years",
+    "Age 15-65 years and calendar year 2005-2023"
+  ),
+  N = c(
+    nrow(dat),
+
+    dat %>%
+      filter(
+        !is.na(edad_ano_creacion_caso),
+        between(edad_ano_creacion_caso, 15, 65)
+      ) %>%
+      nrow(),
+
+    dat %>%
+      filter(
+        !is.na(edad_ano_creacion_caso),
+        between(edad_ano_creacion_caso, 15, 65),
+        !is.na(year),
+        between(year, 2005, 2023)
+      ) %>%
+      nrow()
+  )
+)
+
+kable(analytic_sample_flow)
+```
+
+## Create preliminary analytic dataset
+
+The original imported dataset (`dat`) is preserved.
+
+A separate dataset called `analytic_dat` is created containing observations that meet the currently established age and calendar-year criteria.
+
+```{r create-analytic-dataset}
+analytic_dat <- dat %>%
+  filter(
+    !is.na(edad_ano_creacion_caso),
+    between(edad_ano_creacion_caso, 15, 65),
+    !is.na(year),
+    between(year, 2005, 2023)
+  )
+
+# ============================================================
+# TODO: ADD FINAL FEP/NAPD CASE ELIGIBILITY CRITERION HERE
+#
+# The appropriate use of ipd_cofirmado and/or ipd_descartado
+# will be determined after reviewing the real registry data.
+# ============================================================
+```
+
+## Investigate individuals with multiple records
+
+The registry may contain more than one record for the same individual. Before defining the final analytic sample, this section examines the frequency and characteristics of repeated records.
+
+No records are removed at this stage.
+
+```{r repeated-records-summary}
+
+record_counts <- analytic_dat %>%
+  count(id_persona, name = "n_records")
+
+repeated_record_summary <- tibble(
+  Measure = c(
+    "Total records",
+    "Unique individuals",
+    "Individuals with >1 record",
+    "Records belonging to individuals with >1 record",
+    "Maximum records for one individual"
+  ),
+  Value = c(
+    nrow(analytic_dat),
+    n_distinct(analytic_dat$id_persona),
+    sum(record_counts$n_records > 1),
+    sum(record_counts$n_records[record_counts$n_records > 1]),
+    max(record_counts$n_records)
+  )
+)
+
+kable(repeated_record_summary)
+```
+
+### Number of records per individual
+
+```{r records-per-person}
+
+record_counts %>%
+  count(n_records, name = "n_individuals") %>%
+  arrange(n_records) %>%
+  kable(
+    col.names = c(
+      "Number of records per individual",
+      "Number of individuals"
+    )
+  )
+```
+
+### Examine repeated records
+
+The table below displays records belonging to individuals who appear more than once in the preliminary analytic dataset. This is intended to help determine why repeated records occur and which record should ultimately be retained for Aim 1.
+
+```{r examine-repeated-records}
+
+repeated_records <- analytic_dat %>%
+  semi_join(
+    record_counts %>% filter(n_records > 1),
+    by = "id_persona"
+  ) %>%
+  arrange(id_persona, fecha_creacion_date) %>%
+  select(
+    id_persona,
+    fecha_creacion_caso,
+    fecha_creacion_date,
+    year,
+    edad_ano_creacion_caso,
+    ipd_cofirmado,
+    ipd_descartado,
+    desc_nivel_estab_crea_caso,
+    desc_tipo_estab_crea_caso
+  )
+
+head(repeated_records, 50) %>%
+  kable()
+```
+
+## Verify sample restrictions
+
+These checks confirm that the age and calendar-year restrictions were applied as intended.
+
+```{r verify-restrictions}
+verification <- tibble(
+  Check = c(
+    "Number of observations",
+    "Minimum age",
+    "Maximum age",
+    "Earliest calendar year",
+    "Latest calendar year"
+  ),
+  Value = c(
+    nrow(analytic_dat),
+    min(analytic_dat$edad_ano_creacion_caso),
+    max(analytic_dat$edad_ano_creacion_caso),
+    min(analytic_dat$year),
+    max(analytic_dat$year)
+  )
+)
+
+kable(verification)
+```
+
+## Records by calendar year
+
+This table shows the number of observations in the preliminary analytic dataset for each calendar year.
+
+```{r records-by-year}
+analytic_dat %>%
+  count(year, name = "n") %>%
+  kable(
+    col.names = c("Calendar year", "n")
+  )
+```
+
