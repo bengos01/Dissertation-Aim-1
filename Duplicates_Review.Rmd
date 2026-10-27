@@ -26,6 +26,8 @@ This file examines individuals with multiple records in the registry to help det
 
 No records are excluded or altered in this review.
 
+All output is aggregated. Individual identifiers and individual-level records are not displayed in the knitted output.
+
 ```{r import-data}
 # ============================================================
 # FILE PATH — UPDATE BEFORE RUNNING ON THE REAL DATA
@@ -58,11 +60,11 @@ dat <- dat %>%
   )
 ```
 
-# 3. Investigate individuals with multiple records
+# 3. Frequency of repeated records
 
-The registry contains some individuals with more than one record. This section examines the frequency and characteristics of these repeated records before any decisions are made about which records should be included in the final Aim 1 analytic sample.
+This section summarizes how frequently individuals appear more than once in the registry.
 
-No records are removed at this stage.
+No individual-level records are displayed.
 
 ## Summary of repeated records
 
@@ -95,143 +97,119 @@ kable(repeated_record_summary)
 ```{r records-per-person}
 record_counts %>%
   count(n_records, name = "n_individuals") %>%
+  mutate(
+    percent_individuals = round(
+      100 * n_individuals / sum(n_individuals),
+      1
+    )
+  ) %>%
   arrange(n_records) %>%
   kable(
     col.names = c(
       "Number of records per individual",
-      "Number of individuals"
+      "Number of individuals",
+      "Percent of individuals"
     )
   )
 ```
 
-## Examine repeated records
+# 4. Compare repeated records within individuals
 
-The table below displays records belonging to individuals who appear more than once in the registry.
+This section summarizes whether repeated records for the same individual differ in case creation date, age, IPD status, or establishment characteristics.
 
-The purpose is to examine whether repeated records differ in case creation date, age, IPD status, or establishment characteristics.
+The record-level dataset is used only to calculate aggregate summaries and is not displayed.
 
-```{r examine-repeated-records}
+```{r create-repeated-records, include=FALSE}
 repeated_records <- dat %>%
   semi_join(
     record_counts %>% filter(n_records > 1),
     by = "id_persona"
   ) %>%
-  arrange(id_persona, fecha_creacion_date) %>%
-  select(
-    id_persona,
-    fecha_creacion_caso,
-    fecha_creacion_date,
-    year,
-    edad_ano_creacion_caso,
-    ipd_cofirmado,
-    ipd_descartado,
-    desc_nivel_estab_crea_caso,
-    desc_tipo_estab_crea_caso
-  )
-
-head(repeated_records, 50) %>%
-  kable()
+  arrange(id_persona, fecha_creacion_date)
 ```
-
-# 4. Compare repeated records within individuals
-
-This section summarizes whether the repeated records for the same individual differ in case date, age, IPD status, or establishment characteristics.
 
 ```{r duplicate-patterns}
-duplicate_patterns <- repeated_records %>%
-  group_by(id_persona) %>%
-  summarise(
-    n_records = n(),
-    n_unique_dates = n_distinct(fecha_creacion_date),
-    n_unique_ages = n_distinct(edad_ano_creacion_caso),
-    n_unique_ipd_confirmed = n_distinct(
-      ipd_cofirmado,
-      na.rm = TRUE
+if (nrow(repeated_records) > 0) {
+
+  duplicate_patterns <- repeated_records %>%
+    group_by(id_persona) %>%
+    summarise(
+      n_records = n(),
+      n_unique_dates = n_distinct(
+        fecha_creacion_date,
+        na.rm = TRUE
+      ),
+      n_unique_ages = n_distinct(
+        edad_ano_creacion_caso,
+        na.rm = TRUE
+      ),
+      n_unique_ipd_confirmed = n_distinct(
+        ipd_cofirmado,
+        na.rm = TRUE
+      ),
+      n_unique_ipd_discarded = n_distinct(
+        ipd_descartado,
+        na.rm = TRUE
+      ),
+      n_unique_establishment_levels = n_distinct(
+        desc_nivel_estab_crea_caso,
+        na.rm = TRUE
+      ),
+      n_unique_establishment_types = n_distinct(
+        desc_tipo_estab_crea_caso,
+        na.rm = TRUE
+      ),
+      .groups = "drop"
+    )
+
+  duplicate_pattern_summary <- tibble(
+    Characteristic = c(
+      "Different case creation dates",
+      "Different ages",
+      "Different IPD confirmed status",
+      "Different IPD discarded status",
+      "Different establishment levels",
+      "Different establishment types"
     ),
-    n_unique_ipd_discarded = n_distinct(
-      ipd_descartado,
-      na.rm = TRUE
-    ),
-    n_unique_establishment_levels = n_distinct(
-      desc_nivel_estab_crea_caso,
-      na.rm = TRUE
-    ),
-    n_unique_establishment_types = n_distinct(
-      desc_tipo_estab_crea_caso,
-      na.rm = TRUE
-    ),
-    .groups = "drop"
-  )
-
-duplicate_pattern_summary <- duplicate_patterns %>%
-  summarise(
-    duplicated_individuals = n(),
-    different_case_dates = sum(n_unique_dates > 1),
-    different_ages = sum(n_unique_ages > 1),
-    different_ipd_confirmed = sum(n_unique_ipd_confirmed > 1),
-    different_ipd_discarded = sum(n_unique_ipd_discarded > 1),
-    different_establishment_levels =
-      sum(n_unique_establishment_levels > 1),
-    different_establishment_types =
-      sum(n_unique_establishment_types > 1)
-  )
-
-kable(
-  duplicate_pattern_summary,
-  col.names = c(
-    "Duplicated individuals",
-    "Different case dates",
-    "Different ages",
-    "Different IPD confirmed status",
-    "Different IPD discarded status",
-    "Different establishment levels",
-    "Different establishment types"
-  )
-)
-```
-
-# 5. Repeated individuals with changing IPD status
-
-This section displays examples of individuals whose IPD confirmation or discard status changes across records.
-
-```{r changing-ipd}
-changing_ipd_ids <- duplicate_patterns %>%
-  filter(
-    n_unique_ipd_confirmed > 1 |
-    n_unique_ipd_discarded > 1
+    N = c(
+      sum(duplicate_patterns$n_unique_dates > 1),
+      sum(duplicate_patterns$n_unique_ages > 1),
+      sum(duplicate_patterns$n_unique_ipd_confirmed > 1),
+      sum(duplicate_patterns$n_unique_ipd_discarded > 1),
+      sum(duplicate_patterns$n_unique_establishment_levels > 1),
+      sum(duplicate_patterns$n_unique_establishment_types > 1)
+    )
   ) %>%
-  pull(id_persona)
+    mutate(
+      Percent = round(
+        100 * N / nrow(duplicate_patterns),
+        1
+      )
+    )
 
-changing_ipd_records <- repeated_records %>%
-  filter(id_persona %in% changing_ipd_ids) %>%
-  arrange(id_persona, fecha_creacion_date)
+  kable(
+    duplicate_pattern_summary,
+    col.names = c(
+      "Characteristic differing across records",
+      "N",
+      "Percent of individuals with repeated records"
+    )
+  )
 
-head(changing_ipd_records, 100) %>%
-  kable()
+} else {
+
+  cat("No individuals with multiple records were identified.")
+
+}
 ```
 
-# 6. Repeated individuals with different case dates
+# 5. Time between repeated records
 
-This section displays examples of individuals whose records occur on different case creation dates.
+This section examines the amount of time between consecutive case creation dates among individuals with multiple records.
 
-```{r different-dates}
-different_date_ids <- duplicate_patterns %>%
-  filter(n_unique_dates > 1) %>%
-  pull(id_persona)
+For individuals with more than two records, each interval between consecutive records is included.
 
-different_date_records <- repeated_records %>%
-  filter(id_persona %in% different_date_ids) %>%
-  arrange(id_persona, fecha_creacion_date)
-
-head(different_date_records, 100) %>%
-  kable()
-```
-
-# 7. Time between repeated records
-
-This section examines the amount of time between consecutive case creation dates for individuals with multiple records.
-
-```{r time-between-records}
+```{r create-time-between, include=FALSE}
 if (nrow(repeated_records) > 0) {
 
   time_between_records <- repeated_records %>%
@@ -242,15 +220,29 @@ if (nrow(repeated_records) > 0) {
         fecha_creacion_date - lag(fecha_creacion_date)
       )
     ) %>%
-    ungroup()
+    ungroup() %>%
+    filter(!is.na(days_since_previous_record))
+
+}
+```
+
+## Summary of time between records
+
+```{r time-between-summary}
+if (
+  exists("time_between_records") &&
+  nrow(time_between_records) > 0
+) {
 
   time_between_records %>%
-    filter(!is.na(days_since_previous_record)) %>%
     summarise(
       n_intervals = n(),
       minimum_days = min(days_since_previous_record),
       median_days = median(days_since_previous_record),
-      mean_days = round(mean(days_since_previous_record), 1),
+      mean_days = round(
+        mean(days_since_previous_record),
+        1
+      ),
       maximum_days = max(days_since_previous_record)
     ) %>%
     kable(
@@ -265,7 +257,228 @@ if (nrow(repeated_records) > 0) {
 
 } else {
 
-  cat("No individuals with multiple records were identified.")
+  cat("No intervals between repeated records were identified.")
+
+}
+```
+
+## Distribution of time between records
+
+```{r time-between-categories}
+if (
+  exists("time_between_records") &&
+  nrow(time_between_records) > 0
+) {
+
+  time_between_records %>%
+    mutate(
+      interval_category = case_when(
+        days_since_previous_record == 0 ~ "Same day",
+        between(days_since_previous_record, 1, 30) ~ "1-30 days",
+        between(days_since_previous_record, 31, 180) ~ "31-180 days",
+        between(days_since_previous_record, 181, 365) ~ "181-365 days",
+        days_since_previous_record > 365 ~ ">365 days",
+        TRUE ~ "Other"
+      )
+    ) %>%
+    count(interval_category, name = "n_intervals") %>%
+    mutate(
+      percent = round(
+        100 * n_intervals / sum(n_intervals),
+        1
+      )
+    ) %>%
+    kable(
+      col.names = c(
+        "Time between consecutive records",
+        "Number of intervals",
+        "Percent of intervals"
+      )
+    )
+
+}
+```
+
+## Histogram of time between records
+
+```{r time-between-histogram}
+if (
+  exists("time_between_records") &&
+  nrow(time_between_records) > 0
+) {
+
+  ggplot(
+    time_between_records,
+    aes(x = days_since_previous_record)
+  ) +
+    geom_histogram(bins = 30) +
+    labs(
+      title = "Time Between Consecutive Records",
+      x = "Days between consecutive records",
+      y = "Number of intervals"
+    ) +
+    theme_minimal()
+
+}
+```
+
+# 6. IPD confirmation patterns across repeated records
+
+This section examines whether IPD confirmation status changes across repeated records.
+
+Records are ordered by case creation date within each individual.
+
+These categories describe the observed registry pattern only and should not yet be interpreted as diagnostic pathways.
+
+## Individuals with exactly two records
+
+For individuals with exactly two records, this table summarizes IPD confirmation status at the first and second record.
+
+```{r ipd-two-record-transitions}
+if (nrow(repeated_records) > 0) {
+
+  two_record_ipd <- repeated_records %>%
+    group_by(id_persona) %>%
+    filter(n() == 2) %>%
+    arrange(fecha_creacion_date, .by_group = TRUE) %>%
+    summarise(
+      first_ipd = first(ipd_cofirmado),
+      second_ipd = last(ipd_cofirmado),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      transition = paste(first_ipd, "→", second_ipd)
+    )
+
+  if (nrow(two_record_ipd) > 0) {
+
+    two_record_ipd %>%
+      count(transition, name = "n_individuals") %>%
+      mutate(
+        percent = round(
+          100 * n_individuals / sum(n_individuals),
+          1
+        )
+      ) %>%
+      arrange(desc(n_individuals)) %>%
+      kable(
+        col.names = c(
+          "IPD confirmation pattern",
+          "Number of individuals",
+          "Percent"
+        )
+      )
+
+  } else {
+
+    cat("No individuals with exactly two records were identified.")
+
+  }
+
+}
+```
+
+# 7. IPD confirmation patterns across all repeated individuals
+
+This section summarizes IPD confirmation patterns using all records for each individual with repeated records.
+
+The categories distinguish individuals who are never confirmed, always confirmed, become confirmed after an initial non-confirmed record, or have another/mixed pattern.
+
+```{r ipd-all-record-patterns}
+if (nrow(repeated_records) > 0) {
+
+  ipd_patterns <- repeated_records %>%
+    group_by(id_persona) %>%
+    arrange(fecha_creacion_date, .by_group = TRUE) %>%
+    summarise(
+      n_records = n(),
+      first_ipd = first(ipd_cofirmado),
+      last_ipd = last(ipd_cofirmado),
+      ever_yes = any(ipd_cofirmado == "SI", na.rm = TRUE),
+      ever_no = any(ipd_cofirmado == "NO", na.rm = TRUE),
+      all_yes = all(ipd_cofirmado == "SI"),
+      all_no = all(ipd_cofirmado == "NO"),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      ipd_pattern = case_when(
+        all_no ~ "NO at all records",
+        all_yes ~ "SI at all records",
+        first_ipd == "NO" &
+          ever_yes ~ "Initial NO, later SI",
+        first_ipd == "SI" &
+          ever_no ~ "Initial SI, later NO",
+        TRUE ~ "Other/mixed pattern"
+      )
+    )
+
+  ipd_patterns %>%
+    count(ipd_pattern, name = "n_individuals") %>%
+    mutate(
+      percent = round(
+        100 * n_individuals / sum(n_individuals),
+        1
+      )
+    ) %>%
+    arrange(desc(n_individuals)) %>%
+    kable(
+      col.names = c(
+        "IPD confirmation pattern",
+        "Number of individuals",
+        "Percent"
+      )
+    )
+
+}
+```
+
+# 8. IPD discard patterns across repeated records
+
+This section provides the corresponding aggregate summary for `ipd_descartado`.
+
+```{r ipd-discard-patterns}
+if (nrow(repeated_records) > 0) {
+
+  discard_patterns <- repeated_records %>%
+    group_by(id_persona) %>%
+    arrange(fecha_creacion_date, .by_group = TRUE) %>%
+    summarise(
+      first_discarded = first(ipd_descartado),
+      last_discarded = last(ipd_descartado),
+      ever_yes = any(ipd_descartado == "SI", na.rm = TRUE),
+      ever_no = any(ipd_descartado == "NO", na.rm = TRUE),
+      all_yes = all(ipd_descartado == "SI"),
+      all_no = all(ipd_descartado == "NO"),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      discard_pattern = case_when(
+        all_no ~ "NO at all records",
+        all_yes ~ "SI at all records",
+        first_discarded == "NO" &
+          ever_yes ~ "Initial NO, later SI",
+        first_discarded == "SI" &
+          ever_no ~ "Initial SI, later NO",
+        TRUE ~ "Other/mixed pattern"
+      )
+    )
+
+  discard_patterns %>%
+    count(discard_pattern, name = "n_individuals") %>%
+    mutate(
+      percent = round(
+        100 * n_individuals / sum(n_individuals),
+        1
+      )
+    ) %>%
+    arrange(desc(n_individuals)) %>%
+    kable(
+      col.names = c(
+        "IPD discarded pattern",
+        "Number of individuals",
+        "Percent"
+      )
+    )
 
 }
 ```

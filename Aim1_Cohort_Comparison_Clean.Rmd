@@ -1,0 +1,368 @@
+---
+title: "Aim 1 | Comparing three analytic cohort definitions"
+author: "Sofia Bengoa"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = TRUE)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(knitr)
+```
+
+```{r import-data}
+# ============================================================
+# FILE PATH — UPDATE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+
+data_file <- "data/raw/synthetic_data.csv"
+
+# ============================================================
+# IMPORT DATA
+# ============================================================
+
+dat <- read_csv(data_file)
+```
+
+
+# Proposed cohort definitions
+
+**Option A: Everyone entered in the registry**
+
+- Include everyone regardless of confirmation or discard status.
+- For individuals with multiple records, select their earliest case-creation record.
+
+**Option B: Confirmed, non-discarded cases**
+
+- Include individuals where:
+  - `ipd_cofirmado = SI`
+  - `ipd_descartado = NO` or missing
+- For individuals with multiple records, select the earliest record meeting both conditions.
+
+**Option C: Non-discarded registry cases**
+
+- Include individuals with at least one record where:
+  - `ipd_cofirmado = SI`, `NO`, or missing
+  - `ipd_descartado = NO` or missing
+- For individuals with multiple records, select the earliest record meeting these conditions.
+- Include suspected cases that were never confirmed, possibly because follow-up was incomplete, while excluding records explicitly marked discarded. This approach does not require confirmation but avoids using discarded records.
+
+
+**For all three options:** Identify each individual's earliest qualifying case-creation record using all available registry records, before applying the study restrictions of 2005–2023 and ages 15–65. Individuals may therefore be included under one cohort definition but excluded under another, and their selected age and calendar year may differ across options. 
+
+**Handling missing IPD values (preliminary approach):** For this initial cohort comparison, missing values for `ipd_cofirmado` and `ipd_descartado` will be temporarily treated as NO when determining eligibility.
+
+
+# Previously obtained results (fixed reference numbers)
+
+The following numbers came from earlier analyses of the **real registry**. They are typed into this document for reference and **are not recalculated** when the Rmd is knitted (including when using synthetic data).
+
+## Overall registry
+
+| Measure | Real-data result |
+|:--|--:|
+| Total registry records | 53,611 |
+| Unique individuals | 49,839 |
+| Individuals with more than one record | 3,392 |
+| Records with age below 15 | 4,203 |
+| Records with age above 65 | 1,860 |
+| Records dated before 2005 | 1,751 |
+
+The age and year figures are **record counts**, not unique-person exclusions; categories can overlap.
+
+## Individuals with multiple records
+
+Among the 3,392 individuals with multiple records:
+
+| Measure | Real-data result |
+|:--|--:|
+| Total records belonging to these individuals | 7,164 |
+| Maximum records per person | 9 |
+| Individuals with different case-creation dates | 3,379 (99.6%) |
+| Median days between consecutive records | 1,125.5 (~3.1 years) |
+
+Different dates suggest the repeated entries may not be simple duplicates.
+
+
+# Read and prepare the current dataset
+
+```{r import-and-prepare}
+required <- c("id_persona", "fecha_creacion_caso", "edad_ano_creacion_caso",
+              "ipd_cofirmado", "ipd_descartado")
+stopifnot(all(required %in% names(dat)))
+
+# Registry dates are formatted as DDMMMYYYY (e.g., 27JAN2005)
+dat <- dat %>%
+  mutate(
+    source_row = row_number(),
+    creation_date = as.Date(parse_date(as.character(fecha_creacion_caso),
+                                       format = "%d%b%Y", locale = locale("en"))),
+    creation_year = year(creation_date),
+    age_at_creation = as.numeric(edad_ano_creacion_caso),
+    confirmed = toupper(trimws(as.character(ipd_cofirmado))),
+    discarded = toupper(trimws(as.character(ipd_descartado)))
+  )
+
+# Create the dataset used for cohort comparisons.
+# Previous real-data QC found no missing person IDs; verify again here.
+valid <- dat %>% filter(!is.na(id_persona))
+
+# Verify basic characteristics of the current dataset.
+kable(tibble(
+  Measure = c("Total records",
+              "Records with missing person ID",
+              "Unique individuals",
+              "Records with missing/unparsed date",
+              "Records with missing age"),
+  N = c(nrow(dat),
+        sum(is.na(dat$id_persona)),
+        n_distinct(valid$id_persona),
+        sum(is.na(dat$creation_date)),
+        sum(is.na(dat$age_at_creation)))
+), caption = "Basic data checks")
+
+# Check missingness of the two IPD flags used for cohort eligibility.
+kable(tibble(
+  Variable = c("ipd_cofirmado", "ipd_descartado"),
+  `Missing records` = c(sum(is.na(dat$confirmed)),
+                        sum(is.na(dat$discarded))),
+  `Missing percent` = round(100 * c(mean(is.na(dat$confirmed)),
+                                    mean(is.na(dat$discarded))), 1)
+), caption = "Missingness of IPD status variables")
+```
+
+# Option A: All registered cases
+
+Select the earliest dated registry record for each person, without restricting confirmation or discard status. Then apply the age/year study window.
+
+```{r option-a}
+option_a_candidates <- valid
+option_a <- option_a_candidates %>%
+  filter(!is.na(creation_date)) %>%
+  arrange(id_persona, creation_date, source_row) %>%
+  group_by(id_persona) %>%
+  slice(1) %>%
+  ungroup() %>%
+  filter(between(creation_year, 2005, 2023),
+         between(age_at_creation, 15, 65))
+
+kable(tibble(
+  Measure = c("Unique people with any registry record",
+              "Unique people in Option A after age/year restrictions"),
+  N = c(n_distinct(option_a_candidates$id_persona), nrow(option_a))
+), caption = "Option A: cohort size")
+```
+
+### Notes and considerations
+
+- **Selection of earliest record:** For each individual, the earliest available case-creation record is selected, regardless of confirmation or discard status.
+- **Calendar-year and age restrictions:** The study restrictions (2005–2023 and ages 15–65) are applied *after* identifying the earliest record. Therefore, an individual whose earliest record falls outside these restrictions is excluded, even if they have a later record within the study period, which may affect cohort selection.
+- **Interpretation of case-creation date:** The earliest registry case-creation date may not necessarily correspond to the individual's first clinical episode or date of confirmed diagnosis. 
+
+
+# Option B: Confirmed, non-discarded cases
+
+Require `ipd_cofirmado = SI` and `ipd_descartado = NO` (or missing) **on the same record**. For this preliminary comparison, missing discard status is treated as NO for eligibility purposes.
+
+For each person, select their earliest qualifying record, then apply the age/year study restrictions. A discarded record elsewhere in the person's history does not automatically exclude them if another record qualifies.
+
+```{r option-b}
+# Identify records meeting Option B criteria.
+# Missing discard status is temporarily treated as NO.
+option_b_candidates <- valid %>%
+  filter(confirmed == "SI",
+         discarded == "NO" | is.na(discarded))
+
+# Select each person's earliest qualifying record.
+# Then apply the study restrictions.
+option_b <- option_b_candidates %>%
+  filter(!is.na(creation_date)) %>%
+  arrange(id_persona, creation_date, source_row) %>%
+  group_by(id_persona) %>%
+  slice(1) %>%
+  ungroup() %>%
+  filter(between(creation_year, 2005, 2023),
+         between(age_at_creation, 15, 65))
+
+kable(tibble(
+  Measure = c("Unique people with any qualifying B record",
+              "Unique people in Option B after age/year restrictions"),
+  N = c(n_distinct(option_b_candidates$id_persona), nrow(option_b))
+), caption = "Option B: cohort size")
+```
+
+### Notes and considerations
+
+- **Confirmation and discard status:** Both criteria are evaluated on the same record. Individuals must have a confirmed record that is not explicitly discarded.
+- **Missing IPD values:** Missing discard status is temporarily treated as NO.
+- **Selection of earliest qualifying record:** Unlike Option A, Option B selects the earliest record that meets the confirmation and discard criteria, which may not be the individual's earliest registry record.
+- **Calendar-year and age restrictions:** The 2005–2023 and 15–65 restrictions are applied after selecting the earliest qualifying record. An individual whose earliest qualifying record falls outside these restrictions is excluded, even if a later qualifying record falls within the study period.
+
+
+
+# Option C: Non-discarded cases
+
+Include records where `ipd_descartado = NO` or missing, regardless of confirmation status (`ipd_cofirmado = SI`, `NO`, or missing). For this preliminary comparison, missing discard status is treated as NO for eligibility purposes.
+
+For each person, select their earliest qualifying record, then apply the age/year study restrictions. A discarded record elsewhere in the person's history does not automatically exclude them if another record qualifies.
+
+```{r option-c}
+# Identify records meeting Option C criteria.
+# Missing discard status is temporarily treated as NO.
+option_c_candidates <- valid %>%
+  filter(discarded == "NO" | is.na(discarded))
+
+# Select each person's earliest qualifying record.
+# Then apply the study restrictions.
+option_c <- option_c_candidates %>%
+  filter(!is.na(creation_date)) %>%
+  arrange(id_persona, creation_date, source_row) %>%
+  group_by(id_persona) %>%
+  slice(1) %>%
+  ungroup() %>%
+  filter(between(creation_year, 2005, 2023),
+         between(age_at_creation, 15, 65))
+
+kable(tibble(
+  Measure = c("Unique people with any qualifying C record",
+              "Unique people in Option C after age/year restrictions"),
+  N = c(n_distinct(option_c_candidates$id_persona), nrow(option_c))
+), caption = "Option C: cohort size")
+```
+
+### Notes and considerations
+
+- **Discard status:** Option C excludes records explicitly marked as discarded (`SI`), but includes records with discard status `NO` or missing.
+- **Confirmation status:** Confirmation is not required. Records with confirmed, unconfirmed, or missing confirmation status can qualify.
+- **Missing IPD values:** Missing discard status is temporarily treated as NO for eligibility purposes. Original missing values are preserved, and this assumption should be revisited after assessing missingness.
+- **Selection of earliest qualifying record:** The earliest record meeting Option C criteria is selected for each individual, even if an earlier discarded record exists.
+- **Calendar-year and age restrictions:** The 2005–2023 and 15–65 restrictions are applied after selecting the earliest qualifying record. Individuals whose earliest qualifying record falls outside these restrictions are excluded, even if a later qualifying record falls within the study period.
+- **Interpretation:** Individuals included under Option C are not necessarily confirmed cases of non-affective psychosis. This definition is more inclusive than Option B and may capture suspected cases without documented confirmation.
+
+
+# Compare the three options
+
+All counts and summaries below are computed using **one selected record per person within each option**, after applying the age/year restrictions.
+
+```{r compare-cohorts}
+# Summarize cohort size, age, and case-creation years.
+cohort_summary <- function(x, label) {
+  tibble(
+    Option = label,
+    `Unique people` = nrow(x),
+    `Mean age` = if (nrow(x)) round(mean(x$age_at_creation), 1) else NA_real_,
+    `Median age` = if (nrow(x)) median(x$age_at_creation) else NA_real_,
+    `Min age` = if (nrow(x)) min(x$age_at_creation) else NA_real_,
+    `Max age` = if (nrow(x)) max(x$age_at_creation) else NA_real_,
+    `First year` = if (nrow(x)) min(x$creation_year) else NA_integer_,
+    `Last year` = if (nrow(x)) max(x$creation_year) else NA_integer_
+  )
+}
+
+# Compare the three final cohorts.
+comparison <- bind_rows(
+  cohort_summary(option_a, "A: All registered"),
+  cohort_summary(option_b, "B: Confirmed, non-discarded"),
+  cohort_summary(option_c, "C: Non-discarded")
+)
+
+kable(comparison,
+      caption = "Final age/year-eligible cohorts: side-by-side comparison")
+```
+
+## Distribution by case-creation year
+
+The following table shows the number of individuals selected in each year under each cohort definition.
+
+```{r year-distribution}
+# Count individuals by case-creation year for each option.
+annual_counts <- option_a %>%
+  count(creation_year, name = "A: All registered") %>%
+  full_join(
+    option_b %>%
+      count(creation_year, name = "B: Confirmed, non-discarded"),
+    by = "creation_year"
+  ) %>%
+  full_join(
+    option_c %>%
+      count(creation_year, name = "C: Non-discarded"),
+    by = "creation_year"
+  ) %>%
+  complete(creation_year = 2005:2023) %>%
+  mutate(across(-creation_year, ~ replace_na(.x, 0L))) %>%
+  arrange(creation_year)
+
+kable(annual_counts,
+      caption = "Number of selected individuals by case-creation year")
+```
+
+### Notes and considerations
+
+- **Age at case creation:** Age summaries reflect the age recorded at the selected case-creation date, which may differ across options for the same individual.
+- **Calendar-year distributions:** Annual counts reflect the year of each individual's selected record, not necessarily the year of their first clinical episode or confirmed diagnosis.
+
+
+# Checks specific to repeated records
+
+The earliest qualifying record may differ across cohort definitions, particularly among individuals with multiple registry records. The following aggregate checks examine ties in earliest qualifying dates and differences in selected dates among individuals included in both final cohorts.
+
+```{r repeated-record-checks}
+# Count people whose earliest qualifying date has more than one qualifying row.
+count_earliest_date_ties <- function(x) {
+  x %>%
+    filter(!is.na(creation_date)) %>%
+    group_by(id_persona) %>%
+    filter(creation_date == min(creation_date)) %>%
+    summarise(tied = n() > 1, .groups = "drop") %>%
+    summarise(N = sum(tied)) %>%
+    pull(N)
+}
+
+# Compare selected dates among people included in both final cohorts.
+# No identifiers or individual dates are printed.
+change_from_a <- function(x) {
+  matched <- inner_join(
+    option_a %>% select(id_persona, a_date = creation_date),
+    x %>% select(id_persona, selected_date = creation_date),
+    by = "id_persona"
+  )
+  sum(matched$a_date != matched$selected_date)
+}
+
+checks <- tibble(
+  Option = c("A", "B", "C"),
+  `People with ties on earliest qualifying date` = c(
+    count_earliest_date_ties(option_a_candidates),
+    count_earliest_date_ties(option_b_candidates),
+    count_earliest_date_ties(option_c_candidates)
+  ),
+  `People in both final cohorts with different selected dates` = c(
+    0L,
+    change_from_a(option_b),
+    change_from_a(option_c)
+  )
+)
+
+kable(checks, caption = "Aggregate checks of record selection")
+```
+
+### Notes and considerations
+
+- **Ties in earliest qualifying dates:** Some individuals may have multiple qualifying records with the same earliest case-creation date. The table reports how many individuals have these ties under each cohort definition.
+- **Differences in selected dates:** For Options B and C, the table counts individuals who are included in both that option and Option A but whose selected case-creation dates differ.
+- **Scope of comparison:** The selected-date comparison includes only individuals who meet the final age/year restrictions under both definitions. It does not count individuals included in one cohort but excluded from the other.
+- **Tie-breaking rule:** When multiple qualifying records share the same earliest date, the code selects the first row in the original dataset. If tied records differ in age or other important characteristics, a more defensible selection rule may be needed.
+
+
+# Questions:
+
+1. **Selection rule:** Is the earliest qualifying record within each option a reasonable proxy for the first relevant case? 
+2. **Primary versus sensitivity analyses:** Which of A, B, or C should define the primary cohort, and which should be sensitivity analyses?
