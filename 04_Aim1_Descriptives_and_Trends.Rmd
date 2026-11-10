@@ -1,0 +1,632 @@
+
+---
+title: "Dissertation Aim 1 — Initial Table 1 and Preliminary Trends"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(readxl)
+library(knitr)
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 9,
+  fig.height = 5
+)
+```
+
+# Dataset overview
+
+
+```{r import-data, include=FALSE}
+# ============================================================
+# FILE PATHS
+# ============================================================
+
+# 1. REGISTRY DATASET
+data_file <- "data/raw/synthetic_data.csv"
+
+# 2. MASTER CODEBOOK
+codebook_file <- "Dissertation_Aim1_Master_Codebook.xlsx"
+
+# ============================================================
+# IMPORT
+# ============================================================
+
+stopifnot(
+  file.exists(data_file),
+  file.exists(codebook_file)
+)
+
+# Import as text to preserve original codes and leading zeros.
+dat <- read_csv(
+  data_file,
+  col_types = cols(.default = col_character()),
+  show_col_types = FALSE
+)
+
+region_codes <- read_excel(
+  codebook_file,
+  sheet = "Region Codes",
+  col_types = "text"
+)
+
+comuna_codes <- read_excel(
+  codebook_file,
+  sheet = "Comuna Codes",
+  col_types = "text"
+)
+
+country_codes <- read_excel(
+  codebook_file,
+  sheet = "Country Codes",
+  col_types = "text"
+)
+```
+
+```{r dataset-overview}
+overview <- tibble(
+  Measure = c(
+    "Total registry records",
+    "Unique individuals",
+    "Number of variables"
+  ),
+  N = c(
+    nrow(dat),
+    n_distinct(dat$id_persona, na.rm = TRUE),
+    ncol(dat)
+  )
+)
+
+kable(overview, caption = "Initial registry overview")
+```
+
+# Analytic cohort
+
+The working cohort includes confirmed (`ipd_cofirmado = SI`), non-discarded (`ipd_descartado = NO`) records. For individuals with multiple qualifying records, the earliest dated qualifying record is selected. Age (15–65 years) and calendar-year (2005–2023) restrictions are applied afterward.
+
+## Prepare cohort variables
+
+```{r prepare-cohort, include=FALSE}
+
+parse_creation_date <- function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA_character_
+
+  as.Date(
+    parse_date_time(
+      x,
+      orders = c("dby", "ymd", "mdy"),
+      locale = "C",
+      quiet = TRUE
+    )
+  )
+}
+
+records <- dat %>%
+  mutate(
+    source_row = row_number(),
+    creation_date = parse_creation_date(fecha_creacion_caso),
+    creation_year = year(creation_date),
+    age_at_creation = suppressWarnings(
+      as.numeric(edad_ano_creacion_caso)
+    ),
+    confirmed = toupper(trimws(ipd_cofirmado)),
+    discarded = toupper(trimws(ipd_descartado)),
+    confirmed_b = !is.na(confirmed) &
+      !is.na(discarded) &
+      confirmed == "SI" &
+      discarded == "NO"
+  )
+```
+
+## Select the analytic cohort
+
+```{r analytic-cohort}
+qualifying_records <- records %>%
+  filter(confirmed_b)
+
+
+dated_qualifying <- qualifying_records %>%
+  filter(
+    !is.na(id_persona),
+    trimws(id_persona) != "",
+    !is.na(creation_date)
+  )
+
+first_confirmed <- dated_qualifying %>%
+  arrange(id_persona, creation_date, source_row) %>%
+  group_by(id_persona) %>%
+  slice(1) %>%
+  ungroup()
+
+analytic_dat <- first_confirmed %>%
+  filter(
+    between(age_at_creation, 15, 65),
+    between(creation_year, 2005, 2023)
+  )
+
+cohort_summary <- tibble(
+  Measure = c(
+    "Total registry records",
+    "Unique registry individuals",
+    "Individuals with a confirmed, non-discarded record and valid date",
+    "Final analytic cohort"
+  ),
+  N = c(
+    nrow(records),
+    n_distinct(
+      records$id_persona[
+        !is.na(records$id_persona) &
+          trimws(records$id_persona) != ""
+      ]
+    ),
+    nrow(first_confirmed),
+    nrow(analytic_dat)
+  )
+)
+
+kable(
+  cohort_summary,
+  caption = "Aim 1 analytic cohort summary"
+)
+
+stopifnot(
+  !anyNA(analytic_dat$id_persona),
+  nrow(analytic_dat) == n_distinct(analytic_dat$id_persona),
+  all(analytic_dat$confirmed_b),
+  all(between(analytic_dat$age_at_creation, 15, 65)),
+  all(between(analytic_dat$creation_year, 2005, 2023))
+)
+```
+
+
+# Prepare descriptive variables
+
+Original registry codes and categories are retained. Region, comuna, and country-of-origin codes are linked to the master codebook. Codes without a match remain identifiable.
+
+```{r descriptive-variables, include=FALSE}
+normalize_code <- function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA_character_
+  sub("^([0-9]+)\\.0+$", "\\1", x)
+}
+
+region_lookup <- region_codes %>%
+  transmute(
+    region_key = normalize_code(`Region Code`),
+    region_name = as.character(`Region name`)
+  ) %>%
+  filter(!is.na(region_key))
+
+comuna_lookup <- comuna_codes %>%
+  transmute(
+    comuna_key = normalize_code(`Comuna Code`),
+    comuna_name = as.character(`Comuna`)
+  ) %>%
+  filter(!is.na(comuna_key))
+
+country_lookup <- country_codes %>%
+  transmute(
+    country_key = normalize_code(`Country Code`),
+    country_name = as.character(`Country Name`)
+  ) %>%
+  filter(!is.na(country_key))
+
+# Prevent joins from multiplying registry records.
+stopifnot(
+  !anyDuplicated(region_lookup$region_key),
+  !anyDuplicated(comuna_lookup$comuna_key),
+  !anyDuplicated(country_lookup$country_key)
+)
+
+analytic_dat <- analytic_dat %>%
+  mutate(
+    region_key = normalize_code(cmd_cod_deis_regi_benef),
+    comuna_key = normalize_code(comuna),
+    country_key = normalize_code(cmd_cod_pais_origen)
+  ) %>%
+  left_join(region_lookup, by = "region_key") %>%
+  left_join(comuna_lookup, by = "comuna_key") %>%
+  left_join(country_lookup, by = "country_key") %>%
+  mutate(
+    age = age_at_creation,
+    calendar_year = creation_year,
+
+    sex = cmd_sexo_benef,
+    chilean_foreign = cmd_cond_chile_extranj,
+    fonasa_tramo = cmd_carga_tramo_benef,
+
+    establishment_level = desc_nivel_estab_crea_caso,
+    establishment_type = desc_tipo_estab_crea_caso,
+
+    region_display = case_when(
+      is.na(region_key) ~ "Missing",
+      is.na(region_name) ~ paste0(region_key, " — Unmapped"),
+      TRUE ~ paste0(region_key, " — ", region_name)
+    ),
+
+    comuna_display = case_when(
+      is.na(comuna_key) ~ "Missing",
+      is.na(comuna_name) ~ paste0(comuna_key, " — Unmapped"),
+      TRUE ~ paste0(comuna_key, " — ", comuna_name)
+    ),
+
+    country_display = case_when(
+      is.na(country_key) ~ "Missing",
+      is.na(country_name) ~ paste0(country_key, " — Unmapped"),
+      TRUE ~ paste0(country_key, " — ", country_name)
+    )
+  )
+
+stopifnot(
+  nrow(analytic_dat) == n_distinct(analytic_dat$id_persona)
+)
+```
+
+
+# Characteristics of the analytic cohort
+
+## Age at case creation
+
+```{r table1-age}
+age_summary <- analytic_dat %>%
+  summarise(
+    N = n(),
+    Mean = round(mean(age, na.rm = TRUE), 1),
+    SD = round(sd(age, na.rm = TRUE), 1),
+    Median = round(median(age, na.rm = TRUE), 1),
+    Q1 = round(quantile(age, 0.25, na.rm = TRUE), 1),
+    Q3 = round(quantile(age, 0.75, na.rm = TRUE), 1),
+    Minimum = min(age, na.rm = TRUE),
+    Maximum = max(age, na.rm = TRUE)
+  )
+
+kable(
+  age_summary,
+  caption = "Age at case creation in the analytic cohort"
+)
+```
+
+## Categorical characteristics
+
+```{r table1-categorical}
+table1_variables <- c(
+  "sex",
+  "chilean_foreign",
+  "fonasa_tramo",
+  "region_display",
+  "establishment_level",
+  "establishment_type"
+)
+
+table1_labels <- c(
+  sex = "Sex",
+  chilean_foreign = "Chilean/foreign status",
+  fonasa_tramo = "FONASA tramo",
+  region_display = "Region",
+  establishment_level = "Establishment level",
+  establishment_type = "Establishment type"
+)
+
+table1_categorical <- analytic_dat %>%
+  select(all_of(table1_variables)) %>%
+  pivot_longer(
+    everything(),
+    names_to = "Variable",
+    values_to = "Category"
+  ) %>%
+  mutate(
+    Category = if_else(
+      is.na(Category) | trimws(Category) == "",
+      "Missing",
+      Category
+    )
+  ) %>%
+  count(Variable, Category, name = "n") %>%
+  group_by(Variable) %>%
+  mutate(
+    Percent = round(100 * n / nrow(analytic_dat), 1),
+    `n (%)` = sprintf("%s (%.1f%%)", n, Percent)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    Variable = recode(Variable, !!!table1_labels)
+  ) %>%
+  select(Variable, Category, `n (%)`)
+
+kable(
+  table1_categorical,
+  caption = "Table 1. Categorical characteristics of the analytic cohort"
+)
+```
+
+## Country of origin
+
+```{r table1-country}
+country_summary <- analytic_dat %>%
+  count(country_display, name = "n", sort = TRUE) %>%
+  mutate(
+    Percent = round(100 * n / nrow(analytic_dat), 1)
+  ) %>%
+  rename(Country_of_origin = country_display)
+
+kable(
+  country_summary,
+  caption = "Recorded country of origin"
+)
+```
+
+## Comuna
+
+```{r table1-comuna}
+comuna_summary <- analytic_dat %>%
+  count(comuna_display, name = "n", sort = TRUE) %>%
+  mutate(
+    Percent = round(100 * n / nrow(analytic_dat), 1)
+  ) %>%
+  rename(Comuna = comuna_display)
+
+kable(
+  comuna_summary,
+  caption = "Recorded comuna"
+)
+
+```
+
+# Preliminary temporal trends
+
+
+## Annual case counts
+
+```{r annual-counts}
+annual_summary <- analytic_dat %>%
+  group_by(calendar_year) %>%
+  summarise(
+    N = n(),
+    Mean_age = mean(age, na.rm = TRUE),
+    Median_age = median(age, na.rm = TRUE),
+    SD_age = sd(age, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(calendar_year)
+
+kable(
+  annual_summary %>%
+    mutate(
+      Mean_age = round(Mean_age, 1),
+      Median_age = round(Median_age, 1),
+      SD_age = round(SD_age, 1)
+    ),
+  caption = "Annual case counts and age at case creation"
+)
+
+ggplot(
+  annual_summary,
+  aes(x = calendar_year, y = N)
+) +
+  geom_col() +
+  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
+  labs(
+    title = "Annual number of individuals in the analytic cohort",
+    x = "Calendar year",
+    y = "Number of individuals"
+  ) +
+  theme_minimal()
+```
+
+## Mean and median age by calendar year
+
+```{r overall-age-trends}
+annual_age_long <- annual_summary %>%
+  select(calendar_year, Mean_age, Median_age) %>%
+  pivot_longer(
+    cols = c(Mean_age, Median_age),
+    names_to = "Statistic",
+    values_to = "Age"
+  ) %>%
+  mutate(
+    Statistic = recode(
+      Statistic,
+      Mean_age = "Mean",
+      Median_age = "Median"
+    )
+  )
+
+ggplot(
+  annual_age_long,
+  aes(
+    x = calendar_year,
+    y = Age,
+    color = Statistic
+  )
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.5) +
+  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
+  labs(
+    title = "Age at case creation by calendar year",
+    x = "Calendar year",
+    y = "Age (years)",
+    color = "Statistic"
+  ) +
+  theme_minimal()
+```
+
+## Mean age trends by selected characteristics
+
+The following figures show unadjusted mean age by year across observed categories. Categories are not collapsed or interpreted beyond their recorded values.
+
+```{r stratified-trends, include=FALSE}
+trend_variables <- c(
+  "sex",
+  "chilean_foreign",
+  "fonasa_tramo",
+  "region_display"
+)
+
+trend_labels <- c(
+  sex = "Sex",
+  chilean_foreign = "Chilean/foreign status",
+  fonasa_tramo = "FONASA tramo",
+  region_display = "Region"
+)
+
+stratified_summary <- analytic_dat %>%
+  select(calendar_year, age, all_of(trend_variables)) %>%
+  pivot_longer(
+    cols = all_of(trend_variables),
+    names_to = "Variable",
+    values_to = "Category"
+  ) %>%
+  mutate(
+    Category = if_else(
+      is.na(Category) | trimws(Category) == "",
+      "Missing",
+      Category
+    )
+  ) %>%
+  group_by(Variable, Category, calendar_year) %>%
+  summarise(
+    N = n(),
+    Mean_age = mean(age, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+### By sex
+
+```{r trend-sex}
+stratified_summary %>%
+  filter(Variable == "sex") %>%
+  ggplot(
+    aes(
+      x = calendar_year,
+      y = Mean_age,
+      color = Category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.2) +
+  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
+  labs(
+    title = "Mean age at case creation by sex",
+    x = "Calendar year",
+    y = "Mean age (years)",
+    color = "Sex"
+  ) +
+  theme_minimal()
+```
+
+### By Chilean/foreign status
+
+```{r trend-migration}
+stratified_summary %>%
+  filter(Variable == "chilean_foreign") %>%
+  ggplot(
+    aes(
+      x = calendar_year,
+      y = Mean_age,
+      color = Category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.2) +
+  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
+  labs(
+    title = "Mean age at case creation by Chilean/foreign status",
+    x = "Calendar year",
+    y = "Mean age (years)",
+    color = "Recorded status"
+  ) +
+  theme_minimal()
+```
+
+### By FONASA tramo
+
+```{r trend-fonasa}
+stratified_summary %>%
+  filter(Variable == "fonasa_tramo") %>%
+  ggplot(
+    aes(
+      x = calendar_year,
+      y = Mean_age,
+      color = Category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.2) +
+  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
+  labs(
+    title = "Mean age at case creation by FONASA tramo",
+    x = "Calendar year",
+    y = "Mean age (years)",
+    color = "FONASA tramo"
+  ) +
+  theme_minimal()
+```
+
+### By region
+
+```{r trend-region}
+stratified_summary %>%
+  filter(Variable == "region_display") %>%
+  ggplot(
+    aes(
+      x = calendar_year,
+      y = Mean_age,
+      group = Category
+    )
+  ) +
+  geom_line(alpha = 0.65) +
+  facet_wrap(~ Category) +
+  scale_x_continuous(breaks = c(2005, 2010, 2015, 2020, 2023)) +
+  labs(
+    title = "Mean age at case creation by region",
+    x = "Calendar year",
+    y = "Mean age (years)"
+  ) +
+  theme_minimal()
+```
+
+
+## Annual mean age by selected characteristics
+
+The table below presents the number of individuals and mean age at case creation for each calendar year and category.
+
+```{r stratified-trends-table}
+stratified_table <- stratified_summary %>%
+  mutate(
+    Characteristic = recode(Variable, !!!trend_labels),
+    Mean_age = round(Mean_age, 1)
+  ) %>%
+  select(
+    Characteristic,
+    Category,
+    calendar_year,
+    N,
+    Mean_age
+  ) %>%
+  arrange(Characteristic, Category, calendar_year)
+
+kable(
+  stratified_table,
+  col.names = c(
+    "Characteristic",
+    "Category",
+    "Year",
+    "N",
+    "Mean age"
+  ),
+  caption = "Annual mean age at case creation by selected characteristics"
+)
+```
+

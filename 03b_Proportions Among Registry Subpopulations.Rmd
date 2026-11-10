@@ -1,0 +1,411 @@
+
+---
+title: "Aim 1 — Confirmation Proportions Across Subpopulations"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+# Setup and file paths
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(lubridate)
+library(readxl)
+library(knitr)
+```
+
+```{r import-data}
+# ============================================================
+# FILE PATHS — UPDATE THESE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+
+# ---- UPDATE PATH 1: DATASET ----
+data_file <- "data/raw/synthetic_data.csv"
+
+# ---- UPDATE PATH 2: MASTER CODEBOOK ----
+codebook_file <- "Dissertation_Aim1_Master_Codebook.xlsx"
+
+# ============================================================
+# IMPORT DATA AND CODEBOOK — NO PATH CHANGES NEEDED BELOW HERE
+# ============================================================
+
+dat <- read_csv(data_file)
+region_codes  <- read_excel(codebook_file, sheet = "Region Codes")
+comuna_codes  <- read_excel(codebook_file, sheet = "Comuna Codes")
+closure_codes <- read_excel(codebook_file, sheet = "Closure Codes")
+country_codes <- read_excel(codebook_file, sheet = "Country Codes")
+```
+
+# Analysis population and definitions
+
+Include all individuals in the registry, without age or year restrictions.
+
+For each individual (`id_persona`):
+
+1. Select the earliest dated registry record to define age, year, sex, region, FONASA category, and establishment level. If no dated record exists, retain the individual with unknown first-registration year.
+2. Determine whether any available record is confirmed and non-discarded (`ipd_cofirmado == "SI"` and `ipd_descartado == "NO"`).
+
+Report the proportion with observed confirmation overall and by first-registration year, age, sex, region, FONASA category, and establishment level.
+
+# Analysis
+
+## Prepare registry variables
+
+```{r prepare-data}
+required <- c(
+  "id_persona", "fecha_creacion_caso", "edad_ano_creacion_caso",
+  "ipd_cofirmado", "ipd_descartado", "cmd_sexo_benef",
+  "cmd_cod_deis_regi_benef", "cmd_carga_tramo_benef",
+  "desc_nivel_estab_crea_caso"
+)
+
+missing_columns <- setdiff(required, names(dat))
+
+if (length(missing_columns) > 0) {
+  stop(
+    "Required variables missing: ",
+    paste(missing_columns, collapse = ", ")
+  )
+}
+
+records <- dat %>%
+  mutate(
+    source_row = row_number(),
+
+    creation_date = parse_date(
+      as.character(fecha_creacion_caso),
+      format = "%d%b%Y",
+      locale = locale("en")
+    ),
+
+    creation_year = year(creation_date),
+
+    age_at_creation = suppressWarnings(
+      as.numeric(edad_ano_creacion_caso)
+    ),
+
+    confirmed = toupper(
+      trimws(as.character(ipd_cofirmado))
+    ),
+
+    discarded = toupper(
+      trimws(as.character(ipd_descartado))
+    ),
+
+    confirmed_b = !is.na(confirmed) &
+      !is.na(discarded) &
+      confirmed == "SI" &
+      discarded == "NO"
+  )
+
+checks <- tibble(
+  Measure = c(
+    "Total registry records",
+    "Unique individuals",
+    "Missing person IDs",
+    "Missing/unparsed creation dates",
+    "Missing ages"
+  ),
+  N = c(
+    nrow(records),
+    n_distinct(records$id_persona, na.rm = TRUE),
+    sum(is.na(records$id_persona)),
+    sum(is.na(records$creation_date)),
+    sum(is.na(records$age_at_creation))
+  )
+)
+
+kable(
+  checks,
+  caption = "Registry data checks"
+)
+
+if (any(is.na(records$id_persona))) {
+  stop("Missing person IDs require review.")
+}
+```
+
+## Construct person-level population
+
+```{r person-level}
+# Determine confirmation across all records for each person.
+
+confirmation_status <- records %>%
+  group_by(id_persona) %>%
+  summarise(
+    ever_confirmed = any(confirmed_b),
+    .groups = "drop"
+  )
+
+# Prefer dated records, but retain people whose
+# records all have missing dates.
+
+first_registry <- records %>%
+  arrange(
+    id_persona,
+    is.na(creation_date),
+    creation_date,
+    source_row
+  ) %>%
+  group_by(id_persona) %>%
+  slice(1) %>%
+  ungroup()
+
+person_data <- first_registry %>%
+  left_join(
+    confirmation_status,
+    by = "id_persona"
+  )
+
+stopifnot(
+  nrow(person_data) ==
+    n_distinct(person_data$id_persona)
+)
+
+person_data %>%
+  summarise(
+    Registered_individuals = n(),
+    Known_first_registration_year =
+      sum(!is.na(creation_year)),
+    Unknown_first_registration_year =
+      sum(is.na(creation_year))
+  ) %>%
+  kable(
+    caption = "Availability of first-registration year"
+  )
+```
+
+## Overall confirmation proportion
+
+```{r overall-confirmation}
+person_data %>%
+  summarise(
+    Registered_N = n(),
+    Confirmed_N = sum(ever_confirmed),
+    Not_observed_confirmed_N = sum(!ever_confirmed),
+    Confirmed_percent = round(
+      100 * mean(ever_confirmed), 1
+    )
+  ) %>%
+  kable(
+    caption = "Overall person-level confirmation"
+  )
+```
+
+## Prepare categories and summary function
+
+```{r categories}
+# Retain missing values as separate categories.
+
+category <- function(x) {
+  x <- trimws(as.character(x))
+  x[is.na(x) | x == ""] <- "Missing"
+  x
+}
+
+# Region labels from the master codebook.
+
+region_lookup <- region_codes %>%
+  transmute(
+    region_code = category(`Region Code`),
+    region_name = as.character(`Region name`)
+  ) %>%
+  distinct(region_code, .keep_all = TRUE)
+
+person_data <- person_data %>%
+  mutate(
+    age_group = cut(
+      age_at_creation,
+      breaks = c(
+        -Inf, 14, 19, 24, 34, 44, 54, 65, Inf
+      ),
+      labels = c(
+        "Under 15",
+        "15-19",
+        "20-24",
+        "25-34",
+        "35-44",
+        "45-54",
+        "55-65",
+        "Over 65"
+      )
+    ),
+
+    region_code = category(
+      cmd_cod_deis_regi_benef
+    )
+  ) %>%
+  left_join(
+    region_lookup,
+    by = "region_code"
+  ) %>%
+  mutate(
+    region = case_when(
+      region_code == "Missing" ~ "Missing",
+
+      !is.na(region_name) &
+        trimws(region_name) != "" ~
+        paste(
+          region_code,
+          region_name,
+          sep = " - "
+        ),
+
+      TRUE ~ paste(
+        "Unmapped:",
+        region_code
+      )
+    ),
+
+    age_group = category(age_group),
+    sex = category(cmd_sexo_benef),
+    fonasa = category(cmd_carga_tramo_benef),
+
+    establishment_level = category(
+      desc_nivel_estab_crea_caso
+    )
+  )
+
+# Reusable function for subgroup proportions.
+
+confirmation_table <- function(data, group_var) {
+  data %>%
+    group_by(
+      Category = .data[[group_var]]
+    ) %>%
+    summarise(
+      Registered_N = n(),
+      Confirmed_N = sum(ever_confirmed),
+      Confirmed_percent = round(
+        100 * mean(ever_confirmed), 1
+      ),
+      .groups = "drop"
+    )
+}
+```
+
+## Confirmation by calendar year of first registration
+
+```{r confirmation-year}
+year_table <- person_data %>%
+  group_by(creation_year) %>%
+  summarise(
+    Registered_N = n(),
+    Confirmed_N = sum(ever_confirmed),
+    Confirmed_percent = round(
+      100 * mean(ever_confirmed), 1
+    ),
+    .groups = "drop"
+  ) %>%
+  arrange(creation_year)
+
+year_table %>%
+  mutate(
+    creation_year = if_else(
+      is.na(creation_year),
+      "Unknown",
+      as.character(creation_year)
+    )
+  ) %>%
+  kable(
+    caption = "Confirmation by first-registration year"
+  )
+```
+
+```{r confirmation-year-figure, fig.width=9, fig.height=5}
+year_plot_data <- year_table %>%
+  filter(!is.na(creation_year))
+
+ggplot(
+  year_plot_data,
+  aes(
+    x = creation_year,
+    y = Confirmed_percent
+  )
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.8) +
+  scale_x_continuous(
+    breaks = sort(
+      unique(year_plot_data$creation_year)
+    )
+  ) +
+  labs(
+    title = "Confirmation by first-registration year",
+    x = "Calendar year of first registration",
+    y = "Individuals ever confirmed (%)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+```
+
+## Confirmation by age group
+
+```{r confirmation-age}
+confirmation_table(
+  person_data,
+  "age_group"
+) %>%
+  kable(
+    caption = "Confirmation by age at first registration"
+  )
+```
+
+## Confirmation by sex
+
+```{r confirmation-sex}
+confirmation_table(
+  person_data,
+  "sex"
+) %>%
+  kable(
+    caption = "Confirmation by sex"
+  )
+```
+
+## Confirmation by geographic region
+
+```{r confirmation-region}
+confirmation_table(
+  person_data,
+  "region"
+) %>%
+  kable(
+    caption = "Confirmation by geographic region"
+  )
+```
+
+## Confirmation by FONASA category
+
+```{r confirmation-fonasa}
+confirmation_table(
+  person_data,
+  "fonasa"
+) %>%
+  kable(
+    caption = "Confirmation by FONASA category"
+  )
+```
+
+## Confirmation by establishment level
+
+```{r confirmation-establishment}
+confirmation_table(
+  person_data,
+  "establishment_level"
+) %>%
+  kable(
+    caption = "Confirmation by establishment level at first registration"
+  )
+```
+
+

@@ -1,0 +1,486 @@
+
+---
+title: "Aim 1 — Final Cohort Construction and Attrition"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+# Selected definition for the Cohort
+
+Include records satisfying both:
+
+- `ipd_cofirmado == "SI"`
+- `ipd_descartado == "NO"`
+
+For individuals with multiple qualifying records, select the
+**earliest confirmed, non-discarded case-creation record**.
+
+Only AFTER selecting one record per individual, apply:
+
+- Calendar year: 2005–2023, inclusive
+- Age at case creation: 15–65 years, inclusive
+
+We do not substitute later records when the earliest qualifying
+record falls outside these restrictions.
+
+## Questions
+
+1. Can we reproduce the previously reported Option B counts?
+2. How many individuals are excluded by the year restriction?
+3. How many are excluded by the age restriction?
+4. How many fail both restrictions?
+5. How many remain in the final cohort?
+6. Does every included individual have exactly one record,
+   representing their earliest confirmed, non-discarded entry?
+
+# Previously reported real-data results
+
+The following tables are fixed reference results from:
+
+- `Table1_streamlined_FINAL(2).html`
+- `Duplicates_Review(1).html`
+- `Aim1_Cohort_Comparison_Clean(1).html`
+
+## A. Starting registry population
+
+| Measure | Previously reported N |
+|:--|--:|
+| Total registry records | 53,611 |
+| Unique individuals | 49,839 |
+| Individuals with exactly one record | 46,447 |
+| Individuals with more than one record | 3,392 |
+| Records belonging to individuals with multiple records | 7,164 |
+| Maximum records per individual | 9 |
+| Individuals with multiple records and different case-creation dates | 3,379 (99.6%) |
+| Median days between consecutive records | 1,125.5 |
+
+*Sources: Cohort Comparison and Duplicates Review.*
+
+The single-record count (46,447) is calculated as
+49,839 minus 3,392.
+
+## B. Confirmation and discard status
+
+These are record-level counts, not unique individuals.
+
+| `ipd_cofirmado` | `ipd_descartado` | Records |
+|:--|:--|--:|
+| SI | NO | 23,017 |
+| SI | SI | 0 |
+| NO | NO | 15,789 |
+| NO | SI | 14,805 |
+| **Total** | | **53,611** |
+
+*Source: Table1 Streamlined, confirmation × discard cross-tabulation.*
+
+## C. Data completeness and study restrictions
+
+| Measure | Previously reported result |
+|:--|--:|
+| Missing confirmation status | 0 records |
+| Missing discard status | 0 records |
+| Missing age at case creation | 0 records |
+| Missing/unparsed case-creation dates | 0 records |
+| Earliest case-creation date | Dec 16, 2000 |
+| Latest case-creation date | Dec 31, 2023 |
+| Records with age below 15 | 4,203 |
+| Records with age above 65 | 1,860 |
+| Records dated before 2005 | 1,751 |
+
+*Sources: Table1 Streamlined and Cohort Comparison.*
+
+These age/year exclusion counts refer to all registry records,
+not necessarily confirmed individuals. Categories can overlap.
+
+## D. Previously compared cohort definitions
+
+Each option selects the earliest qualifying record per person
+before applying age/year restrictions.
+
+| Cohort definition | Unique individuals before restrictions | Final unique individuals |
+|:--|--:|--:|
+| Option A: All registered cases | 49,839 | 42,442 |
+| **Option B: Confirmed, non-discarded** | **22,471** | **20,388** |
+| Option C: Non-discarded, regardless of confirmation | 37,197 | 32,617 |
+
+*Source: Aim1 Cohort Comparison Clean.*
+
+**Option B is the selected working definition.**
+
+Previously reported Option B attrition:
+
+- 22,471 unique individuals before restrictions
+- 20,388 unique individuals after restrictions
+- 2,083 excluded individuals
+
+# New analysis
+
+## 1. Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = TRUE
+)
+
+library(tidyverse)
+library(lubridate)
+library(readxl)
+library(knitr)
+```
+
+## 2. Import data and master codebook
+
+```{r import-data}
+# ============================================================
+# FILE PATHS — UPDATE THESE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+#
+# The paths below are relative to Sofia's Dissertation-Aim-1
+# project folder. When running this file on another computer,
+# replace BOTH paths below with the locations of:
+#   1. the real registry dataset
+#   2. the master codebook
+#
+
+# ---- UPDATE PATH 1: DATASET ----
+data_file <- "data/raw/synthetic_data.csv"
+
+# ---- UPDATE PATH 2: MASTER CODEBOOK ----
+codebook_file <- "Dissertation_Aim1_Master_Codebook.xlsx"
+
+
+# ============================================================
+# IMPORT DATA AND CODEBOOK — NO PATH CHANGES NEEDED BELOW HERE
+# ============================================================
+
+dat <- read_csv(data_file)
+
+region_codes  <- read_excel(codebook_file, sheet = "Region Codes")
+comuna_codes  <- read_excel(codebook_file, sheet = "Comuna Codes")
+closure_codes <- read_excel(codebook_file, sheet = "Closure Codes")
+country_codes <- read_excel(codebook_file, sheet = "Country Codes")
+```
+
+## 3. Prepare and validate registry variables
+
+```{r prepare-data}
+required <- c(
+  "id_persona",
+  "fecha_creacion_caso",
+  "edad_ano_creacion_caso",
+  "ipd_cofirmado",
+  "ipd_descartado"
+)
+
+missing_columns <- setdiff(required, names(dat))
+
+if (length(missing_columns) > 0) {
+  stop(
+    "Required variables missing: ",
+    paste(missing_columns, collapse = ", ")
+  )
+}
+
+records <- dat %>%
+  mutate(
+    source_row = row_number(),
+
+    creation_date = as.Date(
+      parse_date(
+        as.character(fecha_creacion_caso),
+        format = "%d%b%Y",
+        locale = locale("en")
+      )
+    ),
+
+    creation_year = year(creation_date),
+
+    age_at_creation = suppressWarnings(
+      as.numeric(edad_ano_creacion_caso)
+    ),
+
+    confirmed = toupper(
+      trimws(as.character(ipd_cofirmado))
+    ),
+
+    discarded = toupper(
+      trimws(as.character(ipd_descartado))
+    ),
+
+    option_b = !is.na(confirmed) &
+      !is.na(discarded) &
+      confirmed == "SI" &
+      discarded == "NO"
+  )
+
+# The real-data benchmark assumes complete person IDs.
+# Report missing IDs explicitly rather than silently removing
+# records from the starting population.
+
+id_check <- tibble(
+  Measure = c(
+    "Total records",
+    "Records with missing person ID",
+    "Records with unparsed creation date",
+    "Records with missing age"
+  ),
+
+  N = c(
+    nrow(records),
+    sum(is.na(records$id_persona)),
+    sum(is.na(records$creation_date)),
+    sum(is.na(records$age_at_creation))
+  )
+)
+
+kable(id_check)
+```
+
+## 4. Verify the fixed registry benchmarks
+
+```{r verify-registry}
+person_counts <- records %>%
+  filter(!is.na(id_persona)) %>%
+  count(id_persona, name = "n_records")
+
+benchmarks <- tibble(
+  Measure = c(
+    "Total records",
+    "Unique individuals",
+    "Individuals with exactly one record",
+    "Individuals with multiple records",
+    "Records among individuals with multiple records",
+    "Maximum records per person",
+    "Confirmed SI / discarded NO records",
+    "Confirmed SI / discarded SI records",
+    "Confirmed NO / discarded NO records",
+    "Confirmed NO / discarded SI records",
+    "Missing confirmation",
+    "Missing discard",
+    "Missing age",
+    "Missing/unparsed creation date",
+    "Records younger than 15",
+    "Records older than 65",
+    "Records before 2005"
+  ),
+
+  Expected = c(
+    53611, 49839, 46447, 3392, 7164, 9,
+    23017, 0, 15789, 14805,
+    0, 0, 0, 0, 4203, 1860, 1751
+  ),
+
+  Observed = c(
+    nrow(records),
+    nrow(person_counts),
+    sum(person_counts$n_records == 1),
+    sum(person_counts$n_records > 1),
+    sum(person_counts$n_records[
+      person_counts$n_records > 1
+    ]),
+    max(person_counts$n_records),
+
+    sum(
+      records$confirmed == "SI" &
+        records$discarded == "NO",
+      na.rm = TRUE
+    ),
+
+    sum(
+      records$confirmed == "SI" &
+        records$discarded == "SI",
+      na.rm = TRUE
+    ),
+
+    sum(
+      records$confirmed == "NO" &
+        records$discarded == "NO",
+      na.rm = TRUE
+    ),
+
+    sum(
+      records$confirmed == "NO" &
+        records$discarded == "SI",
+      na.rm = TRUE
+    ),
+
+    sum(is.na(records$confirmed)),
+    sum(is.na(records$discarded)),
+    sum(is.na(records$age_at_creation)),
+    sum(is.na(records$creation_date)),
+    sum(records$age_at_creation < 15, na.rm = TRUE),
+    sum(records$age_at_creation > 65, na.rm = TRUE),
+    sum(records$creation_year < 2005, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    Match = if_else(
+      Expected == Observed,
+      "YES",
+      "NO — REVIEW"
+    )
+  )
+
+kable(
+  benchmarks,
+  caption = "Fixed registry benchmarks versus current run"
+)
+
+if (any(benchmarks$Match != "YES")) {
+  warning(
+    "Registry benchmarks do not all match. Check the data
+     version and variable processing before interpretation."
+  )
+}
+```
+
+## 5. Final Option B cohort and exclusions
+
+We select each individual's earliest confirmed, non-discarded
+record before applying the study restrictions.
+
+The purpose is to identify how many individuals are excluded
+because of the calendar-year restriction (2005–2023), the
+age restriction (15–65), or both.
+
+```{r cohort-exclusions}
+# Check for confirmed individuals with no usable creation date.
+
+missing_date_people <- records %>%
+  filter(!is.na(id_persona), option_b) %>%
+  group_by(id_persona) %>%
+  summarise(
+    all_dates_missing = all(is.na(creation_date)),
+    .groups = "drop"
+  ) %>%
+  summarise(N = sum(all_dates_missing))
+
+knitr::kable(
+  missing_date_people,
+  caption = "Confirmed individuals with no usable creation date"
+)
+
+if (missing_date_people$N > 0) {
+  warning("Some confirmed individuals have no usable creation date.")
+}
+
+# Select earliest confirmed, non-discarded record per person.
+
+earliest_b <- records %>%
+  filter(
+    !is.na(id_persona),
+    option_b,
+    !is.na(creation_date)
+  ) %>%
+  arrange(id_persona, creation_date, source_row) %>%
+  group_by(id_persona) %>%
+  slice(1) %>%
+  ungroup()
+
+# Determine eligibility based on the selected record.
+
+cohort_check <- earliest_b %>%
+  mutate(
+    year_excluded = !between(creation_year, 2005, 2023),
+    age_excluded = is.na(age_at_creation) |
+      !between(age_at_creation, 15, 65),
+
+    exclusion_reason = case_when(
+      !year_excluded & !age_excluded ~ "Included",
+      year_excluded & age_excluded ~ "Both year and age",
+      year_excluded ~ "Year only",
+      age_excluded ~ "Age only"
+    )
+  )
+
+# Cohort counts.
+
+cohort_summary <- cohort_check %>%
+  count(exclusion_reason, name = "N")
+
+knitr::kable(
+  cohort_summary,
+  caption = "Option B cohort inclusion and exclusion"
+)
+
+# Confirm previously reported numbers.
+
+n_initial <- nrow(earliest_b)
+
+n_final <- sum(cohort_check$exclusion_reason == "Included")
+
+stopifnot(
+  nrow(earliest_b) == n_distinct(earliest_b$id_persona)
+)
+
+if (n_initial != 22471 || n_final != 20388) {
+  warning("Cohort counts differ from previous HTML reports.")
+}
+```
+
+## 6. Detailed breakdown of excluded individuals
+
+This table identifies whether excluded individuals fall
+outside the study calendar years, below age 15, above age 65,
+or fail both year and age restrictions.
+
+Each individual is counted once.
+
+```{r detailed-exclusions}
+exclusion_table <- cohort_check %>%
+  mutate(
+    Reason = case_when(
+      exclusion_reason == "Included" ~ "Included",
+
+      year_excluded & age_at_creation < 15 ~
+        "Year restriction and age below 15",
+
+      year_excluded & age_at_creation > 65 ~
+        "Year restriction and age above 65",
+
+      year_excluded & is.na(age_at_creation) ~
+        "Year restriction and missing age",
+
+      year_excluded ~
+        "Year restriction only",
+
+      age_at_creation < 15 ~
+        "Age below 15 only",
+
+      age_at_creation > 65 ~
+        "Age above 65 only",
+
+      is.na(age_at_creation) ~
+        "Missing age",
+
+      TRUE ~ "Other"
+    )
+  ) %>%
+  count(Reason, name = "N")
+
+# Confirm every selected individual appears in exactly one category.
+
+stopifnot(
+  sum(exclusion_table$N) == nrow(cohort_check)
+)
+
+# Confirm the expected number of exclusions.
+
+n_excluded <- sum(
+  cohort_check$exclusion_reason != "Included"
+)
+
+if (n_excluded != 2083) {
+  warning("Exclusion count differs from previous HTML report.")
+}
+
+knitr::kable(
+  exclusion_table,
+  caption = "Detailed Option B cohort attrition"
+)
+```
