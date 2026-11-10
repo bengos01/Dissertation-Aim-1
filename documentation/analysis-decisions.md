@@ -15,26 +15,29 @@ Use this file for concise, non-sensitive decisions that need to remain synchroni
 | 2026-10-02 | The main analysis Rmd will independently reproduce the finalized analytic-sample rules from the raw data. | The primary analysis should be runnable without first executing another R Markdown document. | `Aim1_analysis.Rmd` | — |
 | 2026-10-02 | Do not recode unresolved region code 0 or country-of-origin code 0 until their meanings are confirmed. | Current codebook information does not define these values sufficiently for recoding. | QC and analytic-variable coding | Pending clarification |
 | 2026-10-02 | Treat knitted HTML files as temporary local outputs rather than version-controlled source files. | R Markdown files are the reproducible source and HTML can be regenerated as needed. | Repository organization | — |
+| 2026-11-10 | Use Option B as the Aim 1 cohort: records with `ipd_cofirmado = SI` and `ipd_descartado = NO`; each person's earliest such record; then 2005–2023 and ages 15–65. | Confirmed cases only; dating at the confirmed record is clear and defensible. Expected counts: 22,471 people before restrictions, 20,388 after. | `03a`, `04`, manuscript | — |
+| 2026-11-10 | Read case-creation dates with `parse_date(format = "%d%b%Y")` in every file. | `04` used `parse_date_time()` with several candidate formats, which swapped month and day for days 01–12 (years were unaffected). This picked a different record for one person and gave 20,389 instead of 20,388. | `04` (fixed in commit 49b8ac4) | — |
 
-## Current real-data findings relevant to pending decisions
 
-- The first-pass descriptive/QC workflow has been run on the restricted real registry data.
-- The real extract contains 53,611 records and 49,839 unique individuals.
-- 3,392 individuals have more than one record, so a repeated-record rule must be established before finalizing the Aim 1 cohort.
-- The current extract includes `cmd_carga_tramo_benef` (FONASA beneficiary tramo); availability of a broader insurance variable still needs confirmation.
-- Region code 0 and country-of-origin code 0 remain unresolved and should remain flagged rather than automatically recoded.
+## Current real-data findings
 
-## Open decisions
+- 53,611 records; 49,839 people; 3,392 people with more than one record. Repeat records are a median of ~3.1 years apart, so they look like separate GES cases rather than duplicates.
+- IPD status by record: confirmed 42.9%, neither 29.5%, discarded 27.6%. No record is both confirmed and discarded. No missing or blank values.
+- No missing values in age, date, sex, region, or tramo. Nationality is missing for 17 records; comuna for 67%.
+- Option B cohort: 20,388 people. Mean age at case creation rises from 25.4 (2005) to 32.2 (2023).
+- Region code 0 (9.4% of Option B) and tramo X (9.2%) are similar in size, and both groups are older than the rest.
+- The extract has no ethnicity, education, or occupation variables.
 
-- What do repeated records for the same `id_persona` represent, and what record-level rule should be used for Aim 1?
-- What is the final record-level operational definition of eligible FEP/NAPD using the available confirmation/discard information?
-- What does region code 0 represent in the real registry?
-- What does country-of-origin code 0 represent in the real registry?
-- Is the broader insurance variable (`cod_prevision`) available for Aim 1, or is FONASA tramo the available insurance measure?
-- Is Indigenous ethnicity available in the final analytic data, and how is it coded?
-- What missing-data strategy will be used in the final descriptive and regression analyses?
-- What factor/reference-category coding will be used for the final regression models?
+## Open questions
 
-## Next decision point
+- What do region code 0 and tramo X mean, and are they the same people? (Ask the data provider; needed before modeling.)
+- What does country-of-origin code 0 mean?
+- Are the `cmd_*_benef` variables (region, tramo) recorded at case creation or at the date of data extraction?
+- Is a broader insurance variable (`cod_prevision`) available, or only FONASA tramo?
+- What reference categories will the regression models use?
 
-Review the real-data output from `Duplicates_Review.Rmd`. Use those results together with clarification of the FEP/NAPD operational definition to finalize `Aim1_Analytic_Sample.Rmd`. Once those rules are established, reproduce them in `Aim1_analysis.Rmd` before proceeding to the final descriptive analyses and regression models.
+## Next steps
+
+1. Re-run `04_Aim1_Descriptives_and_Trends.Rmd` on the real data and confirm it prints the 22,471 / 20,388 check.
+2. Send the open questions above to the data provider.
+3. Add the four Aim 1 regression models to `04` (or a new `05`).
