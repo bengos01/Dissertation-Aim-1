@@ -97,16 +97,18 @@ The working cohort includes confirmed (`ipd_cofirmado = SI`), non-discarded (`ip
 
 ```{r prepare-cohort, include=FALSE}
 
+# Registry dates are always DDMMMYYYY (e.g., 27JAN2005).
+# Use one fixed format, as in 03 and 03a. The earlier version tried
+# several formats and misread days 01-12 (month and day swapped).
 parse_creation_date <- function(x) {
   x <- trimws(as.character(x))
   x[x == ""] <- NA_character_
 
   as.Date(
-    parse_date_time(
+    parse_date(
       x,
-      orders = c("dby", "ymd", "mdy"),
-      locale = "C",
-      quiet = TRUE
+      format = "%d%b%Y",
+      locale = locale("en")
     )
   )
 }
@@ -178,6 +180,16 @@ kable(
   cohort_summary,
   caption = "Aim 1 analytic cohort summary"
 )
+
+# Every date should parse; stop if any do not.
+stopifnot(sum(is.na(records$creation_date)) == 0)
+
+# Previous real-data runs: 22,471 before restrictions, 20,388 after.
+cat(if (nrow(first_confirmed) == 22471 && nrow(analytic_dat) == 20388) {
+  "Check: cohort counts match the expected 22,471 / 20,388."
+} else {
+  "CHECK FAILED: cohort counts differ from the expected 22,471 / 20,388."
+})
 
 stopifnot(
   !anyNA(analytic_dat$id_persona),
