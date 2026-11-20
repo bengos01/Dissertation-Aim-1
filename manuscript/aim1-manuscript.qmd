@@ -32,53 +32,78 @@ Citation workflow:
 
 # Methods
 
+<!--
+Methods draft, 2026-11-20. Reflects the decisions in documentation/analysis-decisions.md
+(Option B cohort; code 0 = missing; tramo X kept). Square brackets mark items still to
+confirm. All counts come from real-data outputs 03a, 03b, and 04; re-check them after the
+04 re-run and the 03c validation checks.
+-->
+
 ## Study design and setting
 
-We will conduct a retrospective population-based cohort study of individuals diagnosed with first-episode non-affective psychotic disorder (NAPD) in Chile between January 1, 2005, and December 31, 2023. Chile's *Garantías Explícitas en Salud* (GES) program establishes guaranteed access to care for prioritized health conditions, including first-episode psychosis. Suspected cases are registered through the *Sistema de Información para la Gestión de Garantías en Salud* (SIGGES) and undergo psychiatric evaluation and follow-up to confirm the diagnosis.
+We conducted a retrospective, population-based cohort study of people with a first confirmed episode of non-affective psychotic disorder (NAPD) registered in Chile's public health system between 2005 and 2023. Since 2005, Chile's *Garantías Explícitas en Salud* (GES) program has guaranteed access, timeliness, and financial protection for a set of prioritized conditions, including first-episode schizophrenia-spectrum disorders [@RN41]. The GES guarantee for this condition took effect on July 1, 2005 [add citation for the GES decree]. Suspected cases are registered as GES cases in the *Sistema de Información para la Gestión de Garantías en Salud* (SIGGES), and the diagnosis is then confirmed or ruled out after psychiatric evaluation.
 
 ## Data source
 
-Data will come from the Fondo Nacional de Salud (FONASA) First Episode of Psychosis Registry within the Chile Mental Health Registry and SIGGES infrastructure. The registry contains information on clinical encounters, diagnosis, diagnostic setting, health-system type, and individual and structural characteristics. The proposal describes mandatory reporting from public and private health networks and approximately 95% population coverage [confirm the exact registry name, coverage, and public/private reporting scope with the data providers].
+We used a de-identified, record-level extract of GES first-episode psychosis cases provided by [the Fondo Nacional de Salud (FONASA) / Ministry of Health; confirm provider and extract date]. Registry data of this kind have been used to estimate the incidence of NAPD in Chile [@RN10] and to study early-life risk factors for psychosis [@RN86]. Each record represents one GES case and includes a pseudonymized person identifier, the date the case was created, age in completed years at case creation, the case's confirmation and discard status, beneficiary characteristics (sex, nationality, country of origin, FONASA income bracket, region), and the level and type of the establishment where the case was created. The extract does not include ethnicity, education, or occupation. [Confirm registry coverage, whether private-sector (ISAPRE) cases are included, and whether beneficiary variables are recorded at case creation or at extraction.]
 
-## Study population and eligibility criteria
+The extract contained 53,611 records for 49,839 people. Of these, 3,392 people had more than one record; repeat records were a median of about 3 years apart, consistent with separate GES cases rather than duplicate entries. No record was both confirmed and discarded, and the status variables had no missing values.
 
-The study population will include individuals aged 15–65 years who were registered with a first episode of NAPD, defined using International Classification of Diseases, 10th Revision codes F20–F29, between 2005 and 2023. Individuals younger than 15 years, older than 65 years, or missing age at diagnosis will be excluded from Aim 1. The proposal estimated a fixed eligible sample of 14,416 individuals [confirm after receipt and audit of the analytic data]. The record-level procedure used to identify a first episode and whether a washout period is relevant will be confirmed from the registry documentation.
+## Analytic cohort
+
+We kept records that were confirmed (`ipd_cofirmado` = yes) and not discarded (`ipd_descartado` = no), and selected each person's earliest such record as the index record. This yielded 22,471 people. We then restricted the cohort to index records created between January 1, 2005, and December 31, 2023, and to people aged 15–65 years at case creation. We excluded 2,083 people: 636 outside the calendar window only, 1,403 outside the age range only (966 younger than 15 and 437 older than 65), and 44 outside both. The final analytic cohort comprised 20,388 people (Figure 1 [flow diagram to add]).
+
+The index record is the first *confirmed* GES case, which can come after an earlier unconfirmed or discarded case for the same person [report the number with an earlier non-confirmed record, from 02, section 7]. We compared this definition with two alternatives — the earliest non-discarded record (Option C) and the earliest record of any status (Option A) — and chose it because it restricts the cohort to diagnostically confirmed cases and dates each case at the record that was confirmed. We did not restrict the cohort by birth year, because a birth-cohort design makes age at diagnosis rise with calendar year by construction and would prevent study of the temporal trend.
 
 ## Measures
 
-### Primary outcome
+### Outcome
 
-The primary outcome will be age at diagnosis, treated as a continuous variable and used as recorded in the registry at the time of the first NAPD diagnosis. [Confirm the available age variable, its units, permissible range, missing-value coding, and whether it represents age at first suspected case, clinical evaluation, or confirmed diagnosis.]
+The outcome was age at diagnosis, operationalized as age in completed years at the creation of the index GES case (`edad_ano_creacion_caso`) and analyzed as a continuous variable. Case creation marks entry into the GES pathway and precedes diagnostic confirmation; we refer to it as age at diagnosis throughout [confirm wording with committee; the interval between case creation and confirmation is not available in the extract].
 
 ### Calendar time
 
-Calendar year of diagnosis will be modeled continuously from 2005 through 2023 to estimate the average annual change in age at diagnosis. [Confirm the date or year variable used to define diagnosis year.]
+Calendar year was the year of the index record's creation date (`fecha_creacion_caso`), modeled as a continuous variable centered at 2005, so that its coefficient estimates the average annual change in age at diagnosis.
 
 ### Individual and structural characteristics
 
-Individual characteristics will include sex/gender, Indigenous identity, migration/nativity status, and insurance type. Migration/nativity status is expected to be derived from country of origin and citizenship information and categorized as Chilean-born or migrant/immigrant [confirm available inputs and final definition]. Insurance type will be categorized using the available registry coding [confirm categories and reference group]. Region of residence will represent the structural geographic context, with comunas aggregated into 16 administrative regions [confirm the comuna-to-region crosswalk and final number of comunas in the data].
+- **Sex**, as recorded in the registry (male or female).
+- **Nationality**, Chilean or foreign national, as recorded in the registry. Country of origin was used descriptively and to stratify the trend analysis.
+- **FONASA income bracket** (*tramo*): A, B, C, D, and X. Brackets A–D rise with household income [confirm definitions and the meaning of tramo X]. Tramo X was kept as a separate category.
+- **Region of residence**: the 16 administrative regions of Chile, coded from the beneficiary's region. Region code 0 was treated as missing [pending verification against the "DESCONOCIDO" labels in the full data].
+
+Establishment level and type at case creation are described for context and are the focus of Aim 2. Establishment-type labels that differed only by a trailing abbreviation (for example, *Centro de Referencia de Salud* and *Centro de Referencia de Salud (CRS)*) were merged.
 
 ## Statistical analysis
 
-We will describe the analytic cohort overall and across calendar time using counts and percentages for categorical variables and appropriate measures of central tendency and dispersion for continuous variables. The distribution of age at diagnosis will be examined before selecting the final descriptive summaries.
+We described the cohort overall and by calendar year using counts and percentages for categorical variables and means, standard deviations, medians, and interquartile ranges for age. We plotted mean and median age at diagnosis by calendar year, overall and by each characteristic.
 
-First, we will estimate the unadjusted temporal trend in mean age at diagnosis using linear regression with calendar year modeled continuously. The coefficient for calendar year will represent the estimated average annual change in age at diagnosis from 2005 through 2023.
+We then fit four sets of linear regression models with age at diagnosis as the outcome:
 
-Second, we will fit a multivariable linear regression model to estimate adjusted associations between age at diagnosis and the individual and structural characteristics. We will then estimate the adjusted temporal trend by including calendar year and the core individual and structural characteristics in the same model.
+1. **Unadjusted trend:** calendar year only.
+2. **Adjusted associations without time:** sex, nationality, FONASA bracket, and region, without calendar year, to estimate the cross-sectional association of each characteristic with age at diagnosis.
+3. **Adjusted trend:** model 2 plus calendar year, to estimate the annual change in age at diagnosis net of changes in cohort composition.
+4. **Effect modification by time:** model 3 plus an interaction between calendar year and one characteristic at a time, fit separately for each characteristic, to test whether differences between groups changed over the study period.
 
-To evaluate whether associations between the characteristics and age at diagnosis varied over time, we will fit separate models containing an interaction between calendar year and each characteristic. Interactions will be assessed individually to support interpretation and reduce model complexity. Model-based mean ages, contrasts, and 95% confidence intervals will be estimated and visualized across calendar years.
+Reference categories were male, Chilean, FONASA bracket [A or B; decide], and [Metropolitan Region; decide]. From models 3 and 4 we estimated model-based mean ages and between-group contrasts by calendar year, with 95% confidence intervals. We used heteroskedasticity-consistent (HC3) standard errors [confirm] and assessed linearity of the year effect, residual distributions, and collinearity (variance inflation factors). Analyses were conducted in R version [x.x.x] using [list packages, e.g., tidyverse, sandwich, marginaleffects]. All code is available at [repository link, if made public].
 
-If sparse categories limit model stability, conceptually similar categories may be combined when substantively defensible. If category collapsing is not appropriate, standardized marginal mean ages may be estimated by group and calendar year, with bootstrap confidence intervals [retain only if needed after inspecting the data].
+## Missing data
 
-Model diagnostics will include assessment of collinearity, linearity, residual distributions, and heteroskedasticity. [Specify the final diagnostic procedures and any robust standard-error approach before completing the analysis.]
+Age, case creation date, sex, and FONASA bracket had no missing values. Region was missing for 9.4% of the cohort (code 0), country of origin for 40 people, and nationality for 3. Because people with missing region were older on average, a complete-case analysis could bias the region and trend estimates. [Decide the primary approach: complete-case analysis with multiple imputation as a sensitivity analysis, as in the proposal; multiple imputation as the primary analysis; or a missing-region category. If multiple imputation is used, specify the imputation model, which should include the outcome and calendar year, the number of imputations, and pooling by Rubin's rules.]
 
-## Missing-data analysis
+## Validation and sensitivity analyses
 
-The primary analysis will use complete cases. We will describe the amount and pattern of missingness in the outcome and covariates. Multiple imputation will be conducted as a secondary or sensitivity analysis, and results will be compared with the complete-case estimates. [Specify the imputation model, number of imputations, included variables, and pooling procedure after reviewing the data structure and missingness.]
+Before modeling, we checked the cohort definition and the plausibility of the temporal trend:
 
-## Sensitivity analyses
+- **Comparison with prior counts.** Applying the same steps to people born 1992–2012 and diagnosed 2005–2022, without age limits, we compared our count with the 14,410 confirmed cases reported in an earlier study using this registry [@RN86]. Because the extract has no date of birth, birth year was estimated as calendar year minus age, with bounds for the one-year uncertainty. [Report result from 03c.]
+- **Partial first year.** Because the GES guarantee started midway through 2005, we repeated the analyses excluding 2005.
+- **Migration.** Because migration to Chile increased after 2015, mostly among young adults, we repeated the trend analyses among people of Chilean nationality only.
 
-Planned sensitivity analyses include alternative specifications of age at diagnosis, such as age categories or quantile regression, to assess whether conclusions are sensitive to the linear-model specification. Additional analyses may compare alternative category groupings, standardized marginal estimates for sparse groups, and complete-case versus multiply imputed results. The final sensitivity analyses will be selected based on the observed data structure and documented before interpreting the primary results.
+We also assessed whether conclusions depended on the linear specification by modeling calendar year categorically or with restricted cubic splines (motivated by the visible shift around 2015), and by estimating quantile regression for the median age. [Decide whether to add age-specific rates with annual population denominators, to separate the trend from population aging; scope question for the committee.]
+
+## Ethics
+
+[Add approving IRB(s), protocol number, data use agreement, and waiver of informed consent for de-identified registry data.]
 
 # Results
 
