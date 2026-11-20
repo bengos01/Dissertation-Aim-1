@@ -20,9 +20,10 @@ The official manuscript source is `manuscript/aim1-manuscript.qmd`.
 | `01_Data_Exploration_QC.Rmd` | Record-level descriptive and quality-control review of the raw extract | Run on real data |
 | `02_Repeated_Records_Review.Rmd` | Patterns among people with more than one record | Run on real data |
 | `03_Cohort_Definitions_Comparison.Rmd` | Compares cohort Options A, B, and C | Run on real data; Option B chosen |
-| `03a_Cohort B Definition Review.Rmd` | Option B attrition: exclusions by year and age | Ready to run |
-| `03b_Proportions Among Registry Subpopulations.Rmd` | Share of people ever confirmed, by subgroup | Ready to run |
-| `04_Aim1_Descriptives_and_Trends.Rmd` | Option B Table 1 and descriptive age trends | Date-reading fix on 2026-11-10; re-run on real data |
+| `03a_Cohort B Definition Review.Rmd` | Option B attrition: exclusions by year and age | Run on real data; reproduces 22,471 / 20,388 |
+| `03b_Proportions Among Registry Subpopulations.Rmd` | Share of people ever confirmed, by subgroup | Run on real data |
+| `03c_Validation_Checks.Rmd` | Count check against the urbanicity paper (14,410), the 2005 half year, and trend by country of origin | Ready to run |
+| `04_Aim1_Descriptives_and_Trends.Rmd` | Option B Table 1 and descriptive age trends | Date fix (2026-11-10) and coding updates (2026-11-20); re-run on real data |
 
 **Aim 1 cohort (Option B):** records with `ipd_cofirmado = SI` and `ipd_descartado = NO`; each person's earliest such record; then calendar years 2005–2023 and ages 15–65. Expected: 22,471 people before restrictions, 20,388 after.
 

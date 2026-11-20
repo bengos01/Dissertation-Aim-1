@@ -203,13 +203,38 @@ stopifnot(
 
 # Prepare descriptive variables
 
-Original registry codes and categories are retained. Region, comuna, and country-of-origin codes are linked to the master codebook. Codes without a match remain identifiable.
+Original registry variables are left unchanged; analysis variables are created alongside them. Region, comuna, and country-of-origin codes are linked to the master codebook.
+
+Coding decisions (2026-11-20):
+
+- **Region code 0 and country-of-origin code 0 are treated as missing.** Working assumption agreed with Jeanette and Katrina; Jeanette will verify it against the `DESCONOCIDO` values of the string variables in the full data. To undo, set `code0_as_missing <- FALSE` below.
+- **FONASA tramo X is kept as its own category** (chair's decision).
+- **Establishment-type labels that differ only by a trailing abbreviation are merged** (for example, `CENTRO DE REFERENCIA DE SALUD` and `CENTRO DE REFERENCIA DE SALUD (CRS)`). The mapping is shown below.
 
 ```{r descriptive-variables, include=FALSE}
+# ---- Coding switch -------------------------------------------------
+# TRUE: region code 0 and country-of-origin code 0 become missing.
+code0_as_missing <- TRUE
+
 normalize_code <- function(x) {
   x <- trimws(as.character(x))
   x[x == ""] <- NA_character_
   sub("^([0-9]+)\\.0+$", "\\1", x)
+}
+
+# Merge establishment-type labels that differ only by a trailing
+# abbreviation in parentheses, e.g. "POSTA DE SALUD RURAL" and
+# "POSTA DE SALUD RURAL (PSR)". The version with the abbreviation is
+# kept. Longer parenthetical text such as
+# "(NO PERTENECIENTE AL SNSS)" is not an abbreviation and is untouched.
+harmonize_establishment <- function(x) {
+  x <- trimws(as.character(x))
+  base <- sub(" \\([A-Z]+\\)$", "", x)
+  labels <- unique(x[!is.na(x)])
+  with_abbrev <- labels[grepl(" \\([A-Z]+\\)$", labels)]
+  lookup <- setNames(with_abbrev, sub(" \\([A-Z]+\\)$", "", with_abbrev))
+  out <- ifelse(!is.na(base) & base %in% names(lookup), lookup[base], x)
+  unname(out)
 }
 
 region_lookup <- region_codes %>%
@@ -242,9 +267,13 @@ stopifnot(
 
 analytic_dat <- analytic_dat %>%
   mutate(
-    region_key = normalize_code(cmd_cod_deis_regi_benef),
+    region_key_raw = normalize_code(cmd_cod_deis_regi_benef),
+    country_key_raw = normalize_code(cmd_cod_pais_origen),
+    region_code0 = code0_as_missing & region_key_raw %in% "0",
+    country_code0 = code0_as_missing & country_key_raw %in% "0",
+    region_key = if_else(region_code0, NA_character_, region_key_raw),
     comuna_key = normalize_code(comuna),
-    country_key = normalize_code(cmd_cod_pais_origen)
+    country_key = if_else(country_code0, NA_character_, country_key_raw)
   ) %>%
   left_join(region_lookup, by = "region_key") %>%
   left_join(comuna_lookup, by = "comuna_key") %>%
@@ -255,12 +284,19 @@ analytic_dat <- analytic_dat %>%
 
     sex = cmd_sexo_benef,
     chilean_foreign = cmd_cond_chile_extranj,
+    # Tramo X is kept as recorded (its own category).
     fonasa_tramo = cmd_carga_tramo_benef,
 
     establishment_level = desc_nivel_estab_crea_caso,
-    establishment_type = desc_tipo_estab_crea_caso,
+    establishment_type_raw = desc_tipo_estab_crea_caso,
+    establishment_type = harmonize_establishment(desc_tipo_estab_crea_caso),
+
+    # Analysis versions for the models: NA = missing.
+    region_analysis = region_key,
+    country_analysis = country_key,
 
     region_display = case_when(
+      region_code0 ~ "Missing (code 0)",
       is.na(region_key) ~ "Missing",
       is.na(region_name) ~ paste0(region_key, " — Unmapped"),
       TRUE ~ paste0(region_key, " — ", region_name)
@@ -273,6 +309,7 @@ analytic_dat <- analytic_dat %>%
     ),
 
     country_display = case_when(
+      country_code0 ~ "Missing (code 0)",
       is.na(country_key) ~ "Missing",
       is.na(country_name) ~ paste0(country_key, " — Unmapped"),
       TRUE ~ paste0(country_key, " — ", country_name)
@@ -282,6 +319,48 @@ analytic_dat <- analytic_dat %>%
 stopifnot(
   nrow(analytic_dat) == n_distinct(analytic_dat$id_persona)
 )
+```
+
+```{r coding-checks}
+kable(
+  tibble(
+    Measure = c(
+      "Region code 0 recoded to missing",
+      "Country-of-origin code 0 recoded to missing",
+      "Region missing in analysis variable (total)",
+      "Country of origin missing in analysis variable (total)"
+    ),
+    N = c(
+      sum(analytic_dat$region_code0),
+      sum(analytic_dat$country_code0),
+      sum(is.na(analytic_dat$region_analysis)),
+      sum(is.na(analytic_dat$country_analysis))
+    ),
+    Percent = round(100 * N / nrow(analytic_dat), 1)
+  ),
+  caption = "Code 0 recoding in the analytic cohort"
+)
+
+establishment_mapping <- analytic_dat %>%
+  filter(
+    !is.na(establishment_type_raw),
+    establishment_type_raw != establishment_type
+  ) %>%
+  count(
+    establishment_type_raw,
+    establishment_type,
+    name = "n"
+  )
+
+if (nrow(establishment_mapping) > 0) {
+  kable(
+    establishment_mapping,
+    col.names = c("Original label", "Merged into", "n"),
+    caption = "Establishment-type labels merged"
+  )
+} else {
+  cat("No establishment-type labels needed merging.")
+}
 ```
 
 

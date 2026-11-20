@@ -17,7 +17,10 @@ Use this file for concise, non-sensitive decisions that need to remain synchroni
 | 2026-10-02 | Treat knitted HTML files as temporary local outputs rather than version-controlled source files. | R Markdown files are the reproducible source and HTML can be regenerated as needed. | Repository organization | — |
 | 2026-11-10 | Use Option B as the Aim 1 cohort: records with `ipd_cofirmado = SI` and `ipd_descartado = NO`; each person's earliest such record; then 2005–2023 and ages 15–65. | Confirmed cases only; dating at the confirmed record is clear and defensible. Expected counts: 22,471 people before restrictions, 20,388 after. | `03a`, `04`, manuscript | — |
 | 2026-11-10 | Read case-creation dates with `parse_date(format = "%d%b%Y")` in every file. | `04` used `parse_date_time()` with several candidate formats, which swapped month and day for days 01–12 (years were unaffected). This picked a different record for one person and gave 20,389 instead of 20,388. | `04` (fixed in commit 49b8ac4) | — |
-
+| 2026-11-20 | Treat region code 0 and country-of-origin code 0 as missing (analysis variables only; raw variables unchanged). | Katrina: 0 likely means missing. Jeanette will verify against the `DESCONOCIDO` values of `pais_origen` and `cmd_desc_regi_benef` in the full data; proceed assuming missing. Switch: `code0_as_missing` in `04`. | `04`, `03c` | Katrina, Jeanette |
+| 2026-11-20 | Keep FONASA tramo X as its own category. | Chair's decision. | `04`, models | Chair |
+| 2026-11-20 | Merge establishment-type labels that differ only by a trailing abbreviation (e.g., `CENTRO DE REFERENCIA DE SALUD` and `... (CRS)`). | Same establishment type recorded under two labels. Original labels kept in `establishment_type_raw`. | `04` | — |
+| 2026-11-20 | Run validation checks before modeling: count vs. 14,410 (born 1992–2012, diagnosed 2005–2022, no age limits), the 2005 half year, and trend by country of origin. | Franco: a low count would suggest the filters drop cases; GES started July 1, 2005; migration grew after 2015. | `03c` | Franco Mascayano |
 
 ## Current real-data findings
 
@@ -38,6 +41,7 @@ Use this file for concise, non-sensitive decisions that need to remain synchroni
 
 ## Next steps
 
-1. Re-run `04_Aim1_Descriptives_and_Trends.Rmd` on the real data and confirm it prints the 22,471 / 20,388 check.
-2. Send the open questions above to the data provider.
-3. Add the four Aim 1 regression models to `04` (or a new `05`).
+1. Re-run `04_Aim1_Descriptives_and_Trends.Rmd` and `03c_Validation_Checks.Rmd` on the real data; confirm 04 prints the 22,471 / 20,388 check.
+2. Confirm with Franco how the 14,410 count was defined, then compare it with 03c.
+3. Decide on the 2005 half year and on missing-region handling in the models.
+4. Add the four Aim 1 regression models to `04` (or a new `05`).
