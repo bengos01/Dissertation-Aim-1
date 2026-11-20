@@ -1,0 +1,400 @@
+---
+title: "Aim 1 — Validation Checks Before Modeling"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 9,
+  fig.height = 5
+)
+```
+
+# Purpose
+
+Three checks suggested by Franco Mascayano (November 2026), run before writing the Aim 1 models:
+
+1. **Count check.** Applying the Aim 1 steps to people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give a count close to the **14,410** confirmed cases in the urbanicity paper. A count well below that would suggest the confirmed/discarded filters are dropping cases.
+2. **The 2005 half year.** The GES guarantee for schizophrenia started on **July 1, 2005**, so 2005 covers about half a year and may include a backlog of people already ill.
+3. **Trend by country of origin.** Migration grew after 2015, mostly among young adults. Does the rise in age at case creation hold among people born in Chile?
+
+All output is aggregate. Only the data path below needs to change.
+
+```{r import-data, include=FALSE}
+# ============================================================
+# FILE PATH — UPDATE BEFORE RUNNING ON THE REAL DATA
+# ============================================================
+data_file <- "data/raw/synthetic_data.csv"
+
+# ============================================================
+# IMPORT — NO CHANGES NEEDED BELOW HERE
+# ============================================================
+stopifnot(file.exists(data_file))
+
+dat <- read_csv(
+  data_file,
+  col_types = cols(.default = col_character()),
+  show_col_types = FALSE
+)
+```
+
+```{r prepare, include=FALSE}
+# Registry dates are DDMMMYYYY (e.g., 27JAN2005), as in 03a and 04.
+parse_creation_date <- function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA_character_
+  as.Date(parse_date(x, format = "%d%b%Y", locale = locale("en")))
+}
+
+normalize_code <- function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA_character_
+  sub("^([0-9]+)\\.0+$", "\\1", x)
+}
+
+records <- dat %>%
+  mutate(
+    source_row = row_number(),
+    creation_date = parse_creation_date(fecha_creacion_caso),
+    creation_year = year(creation_date),
+    age_at_creation = suppressWarnings(as.numeric(edad_ano_creacion_caso)),
+    confirmed = toupper(trimws(ipd_cofirmado)),
+    discarded = toupper(trimws(ipd_descartado)),
+    confirmed_b = confirmed %in% "SI" & discarded %in% "NO",
+    non_discarded = discarded %in% "NO"
+  ) %>%
+  filter(!is.na(id_persona), trimws(id_persona) != "")
+
+stopifnot(sum(is.na(records$creation_date)) == 0)
+
+earliest <- function(d) {
+  d %>%
+    arrange(id_persona, creation_date, source_row) %>%
+    group_by(id_persona) %>%
+    slice(1) %>%
+    ungroup()
+}
+
+# Option B: each person's earliest confirmed, non-discarded record.
+option_b <- records %>% filter(confirmed_b) %>% earliest()
+stopifnot(nrow(option_b) == n_distinct(option_b$id_persona))
+```
+
+# Check 1: Count compared with the urbanicity paper
+
+The extract has no date of birth, so birth year is estimated as **calendar year of case creation − age at case creation**. Because age is in completed years, a person's true birth year is either that value or one year earlier. The table therefore gives the main estimate plus a lower and upper bound:
+
+- **Lower bound:** both possible birth years fall within 1992–2012.
+- **Upper bound:** either possible birth year falls within 1992–2012.
+
+Diagnosis year is the calendar year of the index record, restricted to 2005–2022. No age limits are applied.
+
+Because it is not yet confirmed exactly how 14,410 was counted, the same check is shown under several definitions. The first row is the Aim 1 definition.
+
+```{r count-check}
+birth_window <- c(1992, 2012)
+dx_window <- c(2005, 2022)
+reference_n <- 14410
+
+count_cohort <- function(index_records) {
+  d <- index_records %>%
+    filter(between(creation_year, dx_window[1], dx_window[2])) %>%
+    mutate(
+      birth_a = creation_year - age_at_creation,  # main estimate
+      birth_b = birth_a - 1,                      # one year earlier
+      in_a = between(birth_a, birth_window[1], birth_window[2]),
+      in_b = between(birth_b, birth_window[1], birth_window[2])
+    )
+
+  tibble(
+    Main_estimate = sum(d$in_a),
+    Lower_bound = sum(d$in_a & d$in_b),
+    Upper_bound = sum(d$in_a | d$in_b)
+  )
+}
+
+# Definition 2: people ever confirmed, indexed at their first record
+# of any status (rather than their first confirmed record).
+ever_confirmed_ids <- unique(records$id_persona[records$confirmed_b])
+first_any_confirmed_people <- records %>%
+  filter(id_persona %in% ever_confirmed_ids) %>%
+  earliest()
+
+# Definition 3: Option C, earliest non-discarded record.
+option_c <- records %>% filter(non_discarded) %>% earliest()
+
+# Definition 4: every confirmed record (not one per person).
+confirmed_records <- records %>% filter(confirmed_b)
+
+count_table <- bind_rows(
+  count_cohort(option_b) %>%
+    mutate(Definition = "Aim 1 (Option B): earliest confirmed, non-discarded record per person"),
+  count_cohort(first_any_confirmed_people) %>%
+    mutate(Definition = "Ever-confirmed people, indexed at their first record of any status"),
+  count_cohort(option_c) %>%
+    mutate(Definition = "Option C: earliest non-discarded record per person"),
+  count_cohort(confirmed_records) %>%
+    mutate(Definition = "All confirmed records (not one per person)")
+) %>%
+  mutate(
+    Difference_from_14410 = Main_estimate - reference_n,
+    Percent_of_14410 = round(100 * Main_estimate / reference_n, 1)
+  ) %>%
+  select(Definition, Main_estimate, Lower_bound, Upper_bound,
+         Difference_from_14410, Percent_of_14410)
+
+kable(
+  count_table,
+  col.names = c("Definition", "Main estimate", "Lower bound", "Upper bound",
+                "Difference from 14,410", "% of 14,410"),
+  caption = "People born 1992-2012 and diagnosed 2005-2022, no age limits"
+)
+```
+
+## Aim 1 definition by diagnosis year
+
+If the count is below 14,410, this shows whether the shortfall is spread evenly or concentrated in certain years.
+
+```{r count-by-year}
+option_b %>%
+  filter(between(creation_year, dx_window[1], dx_window[2])) %>%
+  mutate(birth_a = creation_year - age_at_creation) %>%
+  filter(between(birth_a, birth_window[1], birth_window[2])) %>%
+  count(creation_year, name = "N") %>%
+  kable(
+    col.names = c("Diagnosis year", "N"),
+    caption = "Aim 1 definition, born 1992-2012 (main estimate), by diagnosis year"
+  )
+```
+
+# Check 2: The 2005 half year
+
+## Registrations by month, 2004–2006
+
+All registry records, regardless of status, followed by Aim 1 index records.
+
+```{r monthly-counts}
+monthly_all <- records %>%
+  filter(between(creation_year, 2004, 2006)) %>%
+  mutate(month = floor_date(creation_date, "month")) %>%
+  count(month, name = "All_records")
+
+monthly_b <- option_b %>%
+  filter(
+    between(creation_year, 2004, 2006),
+    between(age_at_creation, 15, 65)
+  ) %>%
+  mutate(month = floor_date(creation_date, "month")) %>%
+  group_by(month) %>%
+  summarise(
+    Aim1_index_records = n(),
+    Aim1_mean_age = round(mean(age_at_creation), 1),
+    .groups = "drop"
+  )
+
+monthly <- full_join(monthly_all, monthly_b, by = "month") %>%
+  arrange(month) %>%
+  mutate(
+    across(c(All_records, Aim1_index_records), ~ replace_na(.x, 0L)),
+    month = format(month, "%Y-%m")
+  )
+
+kable(
+  monthly,
+  col.names = c("Month", "All records", "Aim 1 index records", "Aim 1 mean age"),
+  caption = "Registrations by month, 2004-2006 (Aim 1 columns use ages 15-65)"
+)
+
+ggplot(monthly, aes(x = month, y = All_records)) +
+  geom_col() +
+  labs(
+    title = "All registry records by month, 2004-2006",
+    x = NULL,
+    y = "Records"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 7))
+```
+
+## Aim 1 cohort: first and second half of 2005
+
+```{r half-year}
+aim1 <- option_b %>%
+  filter(
+    between(age_at_creation, 15, 65),
+    between(creation_year, 2005, 2023)
+  )
+
+aim1 %>%
+  filter(creation_year %in% c(2005, 2006)) %>%
+  mutate(
+    Period = case_when(
+      creation_year == 2005 & creation_date < as.Date("2005-07-01") ~ "2005, Jan-Jun",
+      creation_year == 2005 ~ "2005, Jul-Dec",
+      TRUE ~ "2006 (full year)"
+    )
+  ) %>%
+  group_by(Period) %>%
+  summarise(
+    N = n(),
+    Mean_age = round(mean(age_at_creation), 1),
+    Median_age = median(age_at_creation),
+    .groups = "drop"
+  ) %>%
+  kable(
+    col.names = c("Period", "N", "Mean age", "Median age"),
+    caption = "Aim 1 cohort around the start of the GES guarantee"
+  )
+```
+
+## Does 2005 change the overall trend?
+
+Unadjusted linear trend in age at case creation (years of age per calendar year), with and without 2005. This is a quick check only, not the Aim 1 model.
+
+```{r trend-without-2005}
+slope_row <- function(d, label) {
+  fit <- lm(age_at_creation ~ creation_year, data = d)
+  ci <- confint(fit)["creation_year", ]
+  tibble(
+    Sample = label,
+    N = nrow(d),
+    Change_per_year = round(coef(fit)[["creation_year"]], 3),
+    CI_lower = round(ci[[1]], 3),
+    CI_upper = round(ci[[2]], 3)
+  )
+}
+
+bind_rows(
+  slope_row(aim1, "All years, 2005-2023"),
+  slope_row(filter(aim1, creation_year >= 2006), "Excluding 2005 (2006-2023)")
+) %>%
+  kable(
+    col.names = c("Sample", "N", "Change in mean age per year", "95% CI lower", "95% CI upper"),
+    caption = "Unadjusted trend with and without 2005"
+  )
+```
+
+# Check 3: Trend by country of origin
+
+Country-of-origin code 0 is treated as missing (working assumption, 2026-11-20). Countries with few cases are grouped as "Other" to avoid very small cells.
+
+```{r country-prep, include=FALSE}
+aim1 <- aim1 %>%
+  mutate(
+    country_code = normalize_code(cmd_cod_pais_origen),
+    country_group = case_when(
+      is.na(country_code) | country_code == "0" ~ "Missing",
+      country_code == "152" ~ "Chile",
+      country_code == "604" ~ "Peru",
+      country_code == "862" ~ "Venezuela",
+      country_code == "170" ~ "Colombia",
+      country_code == "68"  ~ "Bolivia",
+      country_code == "332" ~ "Haiti",
+      TRUE ~ "Other"
+    ),
+    born_in_chile = case_when(
+      country_group == "Missing" ~ NA,
+      TRUE ~ country_group == "Chile"
+    ),
+    period = if_else(creation_year <= 2014, "2005-2014", "2015-2023")
+  )
+```
+
+## Country of origin by period
+
+```{r country-by-period}
+aim1 %>%
+  group_by(country_group, period) %>%
+  summarise(
+    N = n(),
+    Mean_age = round(mean(age_at_creation), 1),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = period,
+    values_from = c(N, Mean_age),
+    values_fill = list(N = 0L)
+  ) %>%
+  arrange(desc(`N_2015-2023`)) %>%
+  kable(
+    col.names = c("Country of origin", "N 2005-2014", "N 2015-2023",
+                  "Mean age 2005-2014", "Mean age 2015-2023"),
+    caption = "Aim 1 cohort by country of origin and period"
+  )
+```
+
+## Annual mean age: everyone vs born in Chile
+
+```{r chile-only-trend}
+annual_compare <- bind_rows(
+  aim1 %>% mutate(Group = "Everyone"),
+  aim1 %>% filter(born_in_chile %in% TRUE) %>% mutate(Group = "Born in Chile"),
+  aim1 %>% filter(born_in_chile %in% FALSE) %>% mutate(Group = "Born outside Chile")
+) %>%
+  group_by(Group, creation_year) %>%
+  summarise(
+    N = n(),
+    Mean_age = round(mean(age_at_creation), 1),
+    .groups = "drop"
+  )
+
+annual_compare %>%
+  pivot_wider(
+    names_from = Group,
+    values_from = c(N, Mean_age),
+    values_fill = list(N = 0L)
+  ) %>%
+  select(
+    creation_year,
+    `N_Everyone`, `Mean_age_Everyone`,
+    `N_Born in Chile`, `Mean_age_Born in Chile`,
+    `N_Born outside Chile`, `Mean_age_Born outside Chile`
+  ) %>%
+  kable(
+    col.names = c("Year", "N, everyone", "Mean age, everyone",
+                  "N, born in Chile", "Mean age, born in Chile",
+                  "N, born outside Chile", "Mean age, born outside Chile"),
+    caption = "Annual mean age at case creation by country of origin"
+  )
+
+ggplot(
+  annual_compare,
+  aes(x = creation_year, y = Mean_age, color = Group)
+) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.2) +
+  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
+  labs(
+    title = "Mean age at case creation by country of origin",
+    x = "Calendar year",
+    y = "Mean age (years)",
+    color = NULL
+  ) +
+  theme_minimal()
+```
+
+## Trend with and without people born outside Chile
+
+```{r chile-only-slope}
+bind_rows(
+  slope_row(aim1, "Everyone"),
+  slope_row(filter(aim1, born_in_chile %in% TRUE), "Born in Chile only"),
+  slope_row(filter(aim1, born_in_chile %in% TRUE, creation_year >= 2006),
+            "Born in Chile only, excluding 2005")
+) %>%
+  kable(
+    col.names = c("Sample", "N", "Change in mean age per year", "95% CI lower", "95% CI upper"),
+    caption = "Unadjusted trend by country-of-origin restriction"
+  )
+```
