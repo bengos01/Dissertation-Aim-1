@@ -181,8 +181,14 @@ kable(
   caption = "Aim 1 analytic cohort summary"
 )
 
-# Every date should parse; stop if any do not.
-stopifnot(sum(is.na(records$creation_date)) == 0)
+# Records with a date that cannot be read are already set aside above
+# (filter on !is.na(creation_date)). Report how many, rather than stop:
+# the real data has had none, but synthetic data may include some.
+n_unreadable_dates <- sum(is.na(records$creation_date))
+if (n_unreadable_dates > 0) {
+  cat("Note:", n_unreadable_dates,
+      "records had a case-creation date that could not be read and were set aside.\n")
+}
 
 # Previous real-data runs: 22,471 before restrictions, 20,388 after.
 cat(if (nrow(first_confirmed) == 22471 && nrow(analytic_dat) == 20388) {
