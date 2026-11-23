@@ -118,9 +118,11 @@ kable(
     Measure = c(
       "Records read (with a person ID)",
       "Records with a date that could not be read (set aside)",
-      "Records used"
+      "Records used",
+      "Records used with missing age"
     ),
-    N = c(n_records_read, n_unreadable_dates, nrow(records))
+    N = c(n_records_read, n_unreadable_dates, nrow(records),
+          sum(is.na(records$age_at_creation)))
   ),
   caption = "Records used in these checks"
 )
@@ -147,9 +149,14 @@ birth_window <- c(1992, 2012)
 dx_window <- c(2005, 2022)
 reference_n <- 14410
 
+# Birth year cannot be estimated without age, so people with missing
+# age are left out of the count and reported in their own column.
 count_cohort <- function(index_records) {
-  d <- index_records %>%
-    filter(between(creation_year, dx_window[1], dx_window[2])) %>%
+  in_window <- index_records %>%
+    filter(between(creation_year, dx_window[1], dx_window[2]))
+
+  d <- in_window %>%
+    filter(!is.na(age_at_creation)) %>%
     mutate(
       birth_a = creation_year - age_at_creation,  # main estimate
       birth_b = birth_a - 1,                      # one year earlier
@@ -160,7 +167,8 @@ count_cohort <- function(index_records) {
   tibble(
     Main_estimate = sum(d$in_a),
     Lower_bound = sum(d$in_a & d$in_b),
-    Upper_bound = sum(d$in_a | d$in_b)
+    Upper_bound = sum(d$in_a | d$in_b),
+    Missing_age = sum(is.na(in_window$age_at_creation))
   )
 }
 
@@ -192,12 +200,13 @@ count_table <- bind_rows(
     Percent_of_14410 = round(100 * Main_estimate / reference_n, 1)
   ) %>%
   select(Definition, Main_estimate, Lower_bound, Upper_bound,
-         Difference_from_14410, Percent_of_14410)
+         Difference_from_14410, Percent_of_14410, Missing_age)
 
 kable(
   count_table,
   col.names = c("Definition", "Main estimate", "Lower bound", "Upper bound",
-                "Difference from 14,410", "% of 14,410"),
+                "Difference from 14,410", "% of 14,410",
+                "Missing age (not counted)"),
   caption = "People born 1992-2012 and diagnosed 2005-2022, no age limits"
 )
 ```
