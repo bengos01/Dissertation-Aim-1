@@ -76,7 +76,11 @@ records <- dat %>%
   ) %>%
   filter(!is.na(id_persona), trimws(id_persona) != "")
 
-stopifnot(sum(is.na(records$creation_date)) == 0)
+# Records whose date cannot be read are counted and set aside, as in
+# 03a. The real data has had none; synthetic data may include some.
+n_records_read <- nrow(records)
+n_unreadable_dates <- sum(is.na(records$creation_date))
+records <- records %>% filter(!is.na(creation_date))
 
 earliest <- function(d) {
   d %>%
@@ -89,6 +93,27 @@ earliest <- function(d) {
 # Option B: each person's earliest confirmed, non-discarded record.
 option_b <- records %>% filter(confirmed_b) %>% earliest()
 stopifnot(nrow(option_b) == n_distinct(option_b$id_persona))
+```
+
+# Data check
+
+```{r data-check}
+kable(
+  tibble(
+    Measure = c(
+      "Records read (with a person ID)",
+      "Records with a date that could not be read (set aside)",
+      "Records used"
+    ),
+    N = c(n_records_read, n_unreadable_dates, nrow(records))
+  ),
+  caption = "Records used in these checks"
+)
+
+if (n_unreadable_dates > 0) {
+  cat("Note: some case-creation dates could not be read as DDMMMYYYY",
+      "(e.g., 27JAN2005). Earlier real-data runs had none.\n")
+}
 ```
 
 # Check 1: Count compared with the urbanicity paper
