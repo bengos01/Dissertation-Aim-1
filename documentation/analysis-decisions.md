@@ -21,6 +21,7 @@ Use this file for concise, non-sensitive decisions that need to remain synchroni
 | 2026-11-20 | Keep FONASA tramo X as its own category. | Chair's decision. | `04`, models | Chair |
 | 2026-11-20 | Merge establishment-type labels that differ only by a trailing abbreviation (e.g., `CENTRO DE REFERENCIA DE SALUD` and `... (CRS)`). | Same establishment type recorded under two labels. Original labels kept in `establishment_type_raw`. | `04` | — |
 | 2026-11-20 | Run validation checks before modeling: count vs. 14,410 (born 1992–2012, diagnosed 2005–2022, no age limits), the 2005 half year, and trend by country of origin. | Franco: a low count would suggest the filters drop cases; GES started July 1, 2005; migration grew after 2015. | `03c` | Franco Mascayano |
+| 2026-11-23 | `03c` reads country names from the master codebook (Country Codes sheet) instead of hard-coded codes, and stops if Chile is not found or under half the cohort maps to Chile. | Hard-coded ISO codes would silently misclassify everyone if the registry uses its own coding. | `03c` | — |
 
 ## Current real-data findings
 
