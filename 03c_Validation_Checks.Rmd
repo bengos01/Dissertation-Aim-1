@@ -1,5 +1,5 @@
 ---
-title: "Aim 1 — Validation Checks Before Modeling"
+title: "Aim 1 — Validation Checks"
 output:
   html_document:
     toc: true
@@ -10,6 +10,7 @@ output:
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(lubridate)
+library(readxl)
 library(knitr)
 
 knitr::opts_chunk$set(
@@ -23,29 +24,43 @@ knitr::opts_chunk$set(
 
 # Purpose
 
-Three checks suggested by Franco Mascayano (November 2026), run before writing the Aim 1 models:
+Three checks suggested by Franco to run before writing the Aim 1 models:
 
 1. **Count check.** Applying the Aim 1 steps to people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give a count close to the **14,410** confirmed cases in the urbanicity paper. A count well below that would suggest the confirmed/discarded filters are dropping cases.
 2. **The 2005 half year.** The GES guarantee for schizophrenia started on **July 1, 2005**, so 2005 covers about half a year and may include a backlog of people already ill.
 3. **Trend by country of origin.** Migration grew after 2015, mostly among young adults. Does the rise in age at case creation hold among people born in Chile?
 
-All output is aggregate. Only the data path below needs to change.
+All output is aggregate. Only the two file paths below need to change (the same paths as in 04).
 
 ```{r import-data, include=FALSE}
 # ============================================================
-# FILE PATH — UPDATE BEFORE RUNNING ON THE REAL DATA
+# FILE PATHS — UPDATE BEFORE RUNNING ON THE REAL DATA
 # ============================================================
+
+# 1. REGISTRY DATASET
 data_file <- "data/raw/synthetic_data.csv"
+
+# 2. MASTER CODEBOOK (same file as in 04)
+codebook_file <- "Dissertation_Aim1_Master_Codebook.xlsx"
 
 # ============================================================
 # IMPORT — NO CHANGES NEEDED BELOW HERE
 # ============================================================
-stopifnot(file.exists(data_file))
+stopifnot(
+  file.exists(data_file),
+  file.exists(codebook_file)
+)
 
 dat <- read_csv(
   data_file,
   col_types = cols(.default = col_character()),
   show_col_types = FALSE
+)
+
+country_codes <- read_excel(
+  codebook_file,
+  sheet = "Country Codes",
+  col_types = "text"
 )
 ```
 
@@ -312,28 +327,99 @@ bind_rows(
 
 # Check 3: Trend by country of origin
 
-Country-of-origin code 0 is treated as missing (working assumption, 2026-11-20). Countries with few cases are grouped as "Other" to avoid very small cells.
+Country names come from the **Country Codes** sheet of the master codebook, as in 04. Country-of-origin code 0 is treated as missing (working assumption, 2026-11-20). The five most common countries other than Chile are shown separately; all others are grouped as "Other" to avoid very small cells.
 
 ```{r country-prep, include=FALSE}
+# Upper case, no accents, no extra spaces, so "Chile" matches "CHILE".
+clean_name <- function(x) {
+  x <- stringi::stri_trans_general(as.character(x), "Latin-ASCII")
+  toupper(trimws(x))
+}
+
+country_lookup <- country_codes %>%
+  transmute(
+    country_code = normalize_code(`Country Code`),
+    country_name = trimws(`Country Name`),      # as written, for tables
+    country_match = clean_name(`Country Name`)  # for finding Chile
+  ) %>%
+  filter(!is.na(country_code))
+
+# Each code must appear once, or the join would duplicate people.
+stopifnot(!anyDuplicated(country_lookup$country_code))
+
+# Chile must appear exactly once in the codebook.
+chile_code <- country_lookup$country_code[country_lookup$country_match == "CHILE"]
+if (length(chile_code) != 1) {
+  stop("Expected exactly one 'Chile' row in the Country Codes sheet; found ",
+       length(chile_code), ".")
+}
+
+n_before_join <- nrow(aim1)
+
+aim1 <- aim1 %>%
+  mutate(country_code = normalize_code(cmd_cod_pais_origen)) %>%
+  left_join(country_lookup, by = "country_code") %>%
+  mutate(
+    country_status = case_when(
+      is.na(country_code) | country_code == "0" ~ "Missing",
+      is.na(country_name) ~ "Code not in codebook",
+      country_code == chile_code ~ "Chile",
+      TRUE ~ "Other country"
+    )
+  )
+
+stopifnot(nrow(aim1) == n_before_join)
+
+# Five most common countries other than Chile, from the data.
+top_foreign <- aim1 %>%
+  filter(country_status == "Other country") %>%
+  count(country_name, sort = TRUE) %>%
+  slice_head(n = 5) %>%
+  pull(country_name)
+
 aim1 <- aim1 %>%
   mutate(
-    country_code = normalize_code(cmd_cod_pais_origen),
     country_group = case_when(
-      is.na(country_code) | country_code == "0" ~ "Missing",
-      country_code == "152" ~ "Chile",
-      country_code == "604" ~ "Peru",
-      country_code == "862" ~ "Venezuela",
-      country_code == "170" ~ "Colombia",
-      country_code == "68"  ~ "Bolivia",
-      country_code == "332" ~ "Haiti",
+      country_status == "Missing" ~ "Missing",
+      country_status == "Code not in codebook" ~ "Code not in codebook",
+      country_status == "Chile" ~ "Chile",
+      country_name %in% top_foreign ~ country_name,
       TRUE ~ "Other"
     ),
     born_in_chile = case_when(
-      country_group == "Missing" ~ NA,
-      TRUE ~ country_group == "Chile"
+      country_status %in% c("Missing", "Code not in codebook") ~ NA,
+      TRUE ~ country_status == "Chile"
     ),
     period = if_else(creation_year <= 2014, "2005-2014", "2015-2023")
   )
+
+# Most of the cohort should be born in Chile (about 97% are Chilean
+# nationals). Stop if not: the codes probably did not match.
+share_chile <- mean(aim1$born_in_chile, na.rm = TRUE)
+if (is.nan(share_chile) || share_chile < 0.5) {
+  stop("Less than half of the cohort maps to Chile. ",
+       "Check that the country codes in the data match the codebook.")
+}
+```
+
+## Codebook match
+
+Every country code should be found in the codebook. Country of origin is also compared with the registry's Chilean/foreign nationality variable; the two should mostly agree.
+
+```{r country-match}
+aim1 %>%
+  count(country_status, name = "N") %>%
+  mutate(Percent = round(100 * N / sum(N), 1)) %>%
+  kable(
+    col.names = c("Country of origin", "N", "%"),
+    caption = "Aim 1 cohort: country-of-origin codes matched to the codebook"
+  )
+
+aim1 %>%
+  mutate(nationality = coalesce(trimws(cmd_cond_chile_extranj), "Missing")) %>%
+  count(country_status, nationality) %>%
+  pivot_wider(names_from = nationality, values_from = n, values_fill = 0L) %>%
+  kable(caption = "Country of origin by registry nationality")
 ```
 
 ## Country of origin by period
