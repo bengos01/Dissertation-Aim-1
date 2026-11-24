@@ -82,8 +82,7 @@ records <- dat %>%
     age_at_creation = suppressWarnings(as.numeric(edad_ano_creacion_caso)),
     confirmed = toupper(trimws(ipd_cofirmado)),
     discarded = toupper(trimws(ipd_descartado)),
-    confirmed_b = confirmed %in% "SI" & discarded %in% "NO",
-    non_discarded = discarded %in% "NO"
+    qualifying = confirmed %in% "SI" & discarded %in% "NO"
   ) %>%
   filter(!is.na(id_persona), trimws(id_persona) != "")
 
@@ -101,9 +100,9 @@ earliest <- function(d) {
     ungroup()
 }
 
-# Option B: each person's earliest confirmed, non-discarded record.
-option_b <- records %>% filter(confirmed_b) %>% earliest()
-stopifnot(nrow(option_b) == n_distinct(option_b$id_persona))
+# Aim 1 index record: each person's earliest confirmed, non-discarded record.
+index_records <- records %>% filter(qualifying) %>% earliest()
+stopifnot(nrow(index_records) == n_distinct(index_records$id_persona))
 ```
 
 # Data check
@@ -131,95 +130,74 @@ if (n_unreadable_dates > 0) {
 
 # Check 1: Count compared with the urbanicity paper
 
-The extract has no date of birth, so birth year is estimated as **calendar year of case creation − age at case creation**. Because age is in completed years, a person's true birth year is either that value or one year earlier. The table therefore gives the main estimate plus a lower and upper bound:
+Same steps as Aim 1 (each person's earliest confirmed record), but for people born 1992–2012 and diagnosed 2005–2022, with no age limits.
 
-- **Lower bound:** both possible birth years fall within 1992–2012.
-- **Upper bound:** either possible birth year falls within 1992–2012.
-
-Diagnosis year is the calendar year of the index record, restricted to 2005–2022. No age limits are applied.
-
-Because it is not yet confirmed exactly how 14,410 was counted, the same check is shown under several definitions. The first row is the Aim 1 definition.
+The extract has no date of birth, so birth year is estimated as **year of case creation − age at case creation**. Because age is in completed years, the true birth year could be one year earlier, so a possible range is also shown.
 
 ```{r count-check}
 birth_window <- c(1992, 2012)
 dx_window <- c(2005, 2022)
 reference_n <- 14410
 
-# Birth year cannot be estimated without age, so people with missing
-# age are left out of the count and reported in their own column.
-count_cohort <- function(index_records) {
-  in_window <- index_records %>%
-    filter(between(creation_year, dx_window[1], dx_window[2]))
-
-  d <- in_window %>%
-    filter(!is.na(age_at_creation)) %>%
-    mutate(
-      birth_a = creation_year - age_at_creation,  # main estimate
-      birth_b = birth_a - 1,                      # one year earlier
-      in_a = between(birth_a, birth_window[1], birth_window[2]),
-      in_b = between(birth_b, birth_window[1], birth_window[2])
-    )
-
-  tibble(
-    Main_estimate = sum(d$in_a),
-    Lower_bound = sum(d$in_a & d$in_b),
-    Upper_bound = sum(d$in_a | d$in_b),
-    Missing_age = sum(is.na(in_window$age_at_creation))
-  )
-}
-
-# Definition 2: people ever confirmed, indexed at their first record
-# of any status (rather than their first confirmed record).
-ever_confirmed_ids <- unique(records$id_persona[records$confirmed_b])
-first_any_confirmed_people <- records %>%
-  filter(id_persona %in% ever_confirmed_ids) %>%
-  earliest()
-
-# Definition 3: Option C, earliest non-discarded record.
-option_c <- records %>% filter(non_discarded) %>% earliest()
-
-# Definition 4: every confirmed record (not one per person).
-confirmed_records <- records %>% filter(confirmed_b)
-
-count_table <- bind_rows(
-  count_cohort(option_b) %>%
-    mutate(Definition = "Aim 1 (Option B): earliest confirmed, non-discarded record per person"),
-  count_cohort(first_any_confirmed_people) %>%
-    mutate(Definition = "Ever-confirmed people, indexed at their first record of any status"),
-  count_cohort(option_c) %>%
-    mutate(Definition = "Option C: earliest non-discarded record per person"),
-  count_cohort(confirmed_records) %>%
-    mutate(Definition = "All confirmed records (not one per person)")
-) %>%
-  mutate(
-    Difference_from_14410 = Main_estimate - reference_n,
-    Percent_of_14410 = round(100 * Main_estimate / reference_n, 1)
+check_cohort <- index_records %>%
+  filter(
+    between(creation_year, dx_window[1], dx_window[2]),
+    !is.na(age_at_creation)
   ) %>%
-  select(Definition, Main_estimate, Lower_bound, Upper_bound,
-         Difference_from_14410, Percent_of_14410, Missing_age)
+  mutate(
+    birth_year = creation_year - age_at_creation,
+    in_main = between(birth_year, birth_window[1], birth_window[2]),
+    in_earlier = between(birth_year - 1, birth_window[1], birth_window[2])
+  )
+
+n_main <- sum(check_cohort$in_main)
+n_low <- sum(check_cohort$in_main & check_cohort$in_earlier)
+n_high <- sum(check_cohort$in_main | check_cohort$in_earlier)
 
 kable(
-  count_table,
-  col.names = c("Definition", "Main estimate", "Lower bound", "Upper bound",
-                "Difference from 14,410", "% of 14,410",
-                "Missing age (not counted)"),
+  tibble(
+    Measure = c(
+      "My count",
+      "Possible range",
+      "Urbanicity paper",
+      "Difference",
+      "My count as % of 14,410"
+    ),
+    Value = c(
+      format(n_main, big.mark = ","),
+      paste0(format(n_low, big.mark = ","), " to ", format(n_high, big.mark = ",")),
+      format(reference_n, big.mark = ","),
+      format(n_main - reference_n, big.mark = ","),
+      paste0(round(100 * n_main / reference_n, 1), "%")
+    )
+  ),
   caption = "People born 1992-2012 and diagnosed 2005-2022, no age limits"
 )
+
+n_missing_age <- index_records %>%
+  filter(
+    between(creation_year, dx_window[1], dx_window[2]),
+    is.na(age_at_creation)
+  ) %>%
+  nrow()
+
+if (n_missing_age > 0) {
+  cat("Note:", n_missing_age,
+      "people diagnosed 2005-2022 have no age, so they could not be counted.\n")
+}
 ```
 
-## Aim 1 definition by diagnosis year
+## By diagnosis year
 
-If the count is below 14,410, this shows whether the shortfall is spread evenly or concentrated in certain years.
+If the count is below 14,410, this shows whether the gap is spread evenly or concentrated in certain years.
 
 ```{r count-by-year}
-option_b %>%
-  filter(between(creation_year, dx_window[1], dx_window[2])) %>%
-  mutate(birth_a = creation_year - age_at_creation) %>%
-  filter(between(birth_a, birth_window[1], birth_window[2])) %>%
+check_cohort %>%
+  filter(in_main) %>%
   count(creation_year, name = "N") %>%
   kable(
     col.names = c("Diagnosis year", "N"),
-    caption = "Aim 1 definition, born 1992-2012 (main estimate), by diagnosis year"
+    caption = "People born 1992-2012, by diagnosis year"
   )
 ```
 
@@ -235,7 +213,7 @@ monthly_all <- records %>%
   mutate(month = floor_date(creation_date, "month")) %>%
   count(month, name = "All_records")
 
-monthly_b <- option_b %>%
+monthly_b <- index_records %>%
   filter(
     between(creation_year, 2004, 2006),
     between(age_at_creation, 15, 65)
@@ -275,7 +253,7 @@ ggplot(monthly, aes(x = month, y = All_records)) +
 ## Aim 1 cohort: first and second half of 2005
 
 ```{r half-year}
-aim1 <- option_b %>%
+aim1 <- index_records %>%
   filter(
     between(age_at_creation, 15, 65),
     between(creation_year, 2005, 2023)
