@@ -24,9 +24,9 @@ knitr::opts_chunk$set(
 
 # Three checks suggested by Franco:
 
-1. **Count check.** Applying the Aim 1 steps to people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give a count close to the **14,410** confirmed cases in the urbanicity paper. A count well below that would suggest the confirmed/discarded filters are dropping cases.
-2. **The 2005 half year.** The GES guarantee for schizophrenia started on **July 1, 2005**, so 2005 covers about half a year and may include a backlog of people already ill.
-3. **Trend by country of origin.** Migration grew after 2015, mostly among young adults. Does the rise in age at case creation hold among people born in Chile?
+1. **Count check** Applying the Aim 1 steps to people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give a count close to the **14,410** confirmed cases in the urbanicity paper. A count well below that would suggest the confirmed/discarded filters are dropping cases.
+2. **The 2005 half year** The GES guarantee for schizophrenia started on **July 1, 2005**, so 2005 covers about half a year and may include a backlog of people already ill.
+3. **Trend by country of origin** Migration grew after 2015, mostly among young adults. Does the rise in age at case creation hold among people born in Chile?
 
 ```{r import-data, include=FALSE}
 # ============================================================
