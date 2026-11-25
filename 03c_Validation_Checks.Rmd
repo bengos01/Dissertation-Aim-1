@@ -195,7 +195,7 @@ check_cohort %>%
 
 # Check 2: The 2005 half year
 
-## Registrations by month, 2004–2006
+## Cases by month, 2004–2006
 
 All records by month, with the Aim 1 cohort (ages 15–65) alongside.
 
