@@ -181,7 +181,6 @@ kable(
 
 ## By diagnosis year
 
-If the count is low, this shows which years the gap comes from.
 
 ```{r count-by-year}
 check_cohort %>%
