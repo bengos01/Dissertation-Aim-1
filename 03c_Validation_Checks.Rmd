@@ -1,5 +1,5 @@
 ---
-title: "Aim 1 — Validation Checks"
+title: "Aim 1 Validation Checks"
 output:
   html_document:
     toc: true
@@ -22,11 +22,13 @@ knitr::opts_chunk$set(
 )
 ```
 
-# Three checks suggested by Franco:
+# Purpose
 
-1. **Count check** Applying the Aim 1 steps to people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give a count close to the **14,410** confirmed cases in the urbanicity paper. A count well below that would suggest the confirmed/discarded filters are dropping cases.
-2. **The 2005 half year** The GES guarantee for schizophrenia started on **July 1, 2005**, so 2005 covers about half a year and may include a backlog of people already ill.
-3. **Trend by country of origin** Migration grew after 2015, mostly among young adults. Does the rise in age at case creation hold among people born in Chile?
+Franco suggested three checks before the Aim 1 models:
+
+1. Count check. Following the Aim 1 steps for people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give close to the 14,410 confirmed cases in the urbanicity paper. A much lower count would mean the confirmed/discarded filters are losing cases.
+2. 2005. The GES guarantee for schizophrenia began on July 1, 2005, so 2005 is only half a year and may include a backlog of people who were already ill.
+3. Country of origin. Migration increased after 2015, mostly among young adults past the 15–19 peak age of onset. Check whether age at case creation still rises among people born in Chile.
 
 ```{r import-data, include=FALSE}
 # ============================================================
@@ -86,8 +88,7 @@ records <- dat %>%
   ) %>%
   filter(!is.na(id_persona), trimws(id_persona) != "")
 
-# Records whose date cannot be read are counted and set aside, as in
-# 03a. The real data has had none; synthetic data may include some.
+# Set aside records with unreadable dates (as in 03a).
 n_records_read <- nrow(records)
 n_unreadable_dates <- sum(is.na(records$creation_date))
 records <- records %>% filter(!is.na(creation_date))
@@ -100,7 +101,7 @@ earliest <- function(d) {
     ungroup()
 }
 
-# Aim 1 index record: each person's earliest confirmed, non-discarded record.
+# Each person's earliest confirmed, non-discarded record (Aim 1 steps).
 index_records <- records %>% filter(qualifying) %>% earliest()
 stopifnot(nrow(index_records) == n_distinct(index_records$id_persona))
 ```
@@ -121,18 +122,13 @@ kable(
   ),
   caption = "Records used in these checks"
 )
-
-if (n_unreadable_dates > 0) {
-  cat("Note: some case-creation dates could not be read as DDMMMYYYY",
-      "(e.g., 27JAN2005). Earlier real-data runs had none.\n")
-}
 ```
 
 # Check 1: Count compared with the urbanicity paper
 
-Same steps as Aim 1 (each person's earliest confirmed record), but for people born 1992–2012 and diagnosed 2005–2022, with no age limits.
+Same steps as Aim 1 (earliest confirmed record per person), for people born 1992–2012 and diagnosed 2005–2022, with no age limits.
 
-Birth year is estimated as **year of case creation − age at case creation**. Because age is in completed years, birth year could be one year earlier, so a possible range is also shown.
+Birth year = year of case creation − age. Since age is in completed years, birth year may be one year earlier, which gives the range.
 
 ```{r count-check}
 birth_window <- c(1992, 2012)
@@ -154,26 +150,7 @@ n_main <- sum(check_cohort$in_main)
 n_low <- sum(check_cohort$in_main & check_cohort$in_earlier)
 n_high <- sum(check_cohort$in_main | check_cohort$in_earlier)
 
-kable(
-  tibble(
-    Measure = c(
-      "My count",
-      "Possible range",
-      "Urbanicity paper",
-      "Difference",
-      "My count as % of 14,410"
-    ),
-    Value = c(
-      format(n_main, big.mark = ","),
-      paste0(format(n_low, big.mark = ","), " to ", format(n_high, big.mark = ",")),
-      format(reference_n, big.mark = ","),
-      format(n_main - reference_n, big.mark = ","),
-      paste0(round(100 * n_main / reference_n, 1), "%")
-    )
-  ),
-  caption = "People born 1992-2012 and diagnosed 2005-2022, no age limits"
-)
-
+# People with no age can't be given a birth year.
 n_missing_age <- index_records %>%
   filter(
     between(creation_year, dx_window[1], dx_window[2]),
@@ -181,15 +158,32 @@ n_missing_age <- index_records %>%
   ) %>%
   nrow()
 
-if (n_missing_age > 0) {
-  cat("Note:", n_missing_age,
-      "people diagnosed 2005-2022 have no age, so they could not be counted.\n")
-}
+kable(
+  tibble(
+    Measure = c(
+      "My count",
+      "Possible range",
+      "Urbanicity paper",
+      "Difference",
+      "My count as % of 14,410",
+      "Not counted (no age)"
+    ),
+    Value = c(
+      format(n_main, big.mark = ","),
+      paste0(format(n_low, big.mark = ","), " to ", format(n_high, big.mark = ",")),
+      format(reference_n, big.mark = ","),
+      format(n_main - reference_n, big.mark = ","),
+      paste0(round(100 * n_main / reference_n, 1), "%"),
+      format(n_missing_age, big.mark = ",")
+    )
+  ),
+  caption = "Born 1992-2012, diagnosed 2005-2022, no age limits"
+)
 ```
 
 ## By diagnosis year
 
-If count is below 14,410, this shows whether the gap is spread evenly or concentrated in certain years.
+If the count is low, this shows which years the gap comes from.
 
 ```{r count-by-year}
 check_cohort %>%
@@ -205,7 +199,7 @@ check_cohort %>%
 
 ## Registrations by month, 2004–2006
 
-All registry records, regardless of status
+All records by month, with the Aim 1 cohort (ages 15–65) alongside.
 
 ```{r monthly-counts}
 monthly_all <- records %>%
@@ -250,7 +244,7 @@ ggplot(monthly, aes(x = month, y = All_records)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 7))
 ```
 
-## Aim 1 cohort: first and second half of 2005
+## First and second half of 2005
 
 ```{r half-year}
 aim1 <- index_records %>%
@@ -281,9 +275,9 @@ aim1 %>%
   )
 ```
 
-## Does 2005 change the overall trend?
+## Trend with and without 2005
 
-Unadjusted linear trend in age at case creation (years of age per calendar year), with and without 2005. 
+Unadjusted change in mean age per calendar year.
 
 ```{r trend-without-2005}
 slope_row <- function(d, label) {
@@ -310,7 +304,7 @@ bind_rows(
 
 # Check 3: Trend by country of origin
 
-Country names come from the **Country Codes** sheet of the master codebook, as in 04. Country-of-origin code 0 is treated as missing. The five most common countries other than Chile are shown separately; all others are grouped as "Other"
+Country names are from the Country Codes sheet of the codebook. Code 0 is treated as missing. The five most common countries after Chile are shown; the rest are grouped as Other.
 
 ```{r country-prep, include=FALSE}
 # Upper case, no accents, no extra spaces, so "Chile" matches "CHILE".
@@ -376,8 +370,7 @@ aim1 <- aim1 %>%
     period = if_else(creation_year <= 2014, "2005-2014", "2015-2023")
   )
 
-# Most of the cohort should be born in Chile (about 97% are Chilean
-# nationals). Stop if not: the codes probably did not match.
+# Stop if most people don't map to Chile (codes likely didn't match).
 share_chile <- mean(aim1$born_in_chile, na.rm = TRUE)
 if (is.nan(share_chile) || share_chile < 0.5) {
   stop("Less than half of the cohort maps to Chile. ",
@@ -387,7 +380,7 @@ if (is.nan(share_chile) || share_chile < 0.5) {
 
 ## Codebook match
 
-Every country code should be found in the codebook. Country of origin is also compared with the registry's Chilean/foreign nationality variable; the two should mostly agree.
+Codes not found in the codebook would show up here. Country of origin is also compared with the nationality variable.
 
 ```{r country-match}
 aim1 %>%
@@ -395,14 +388,15 @@ aim1 %>%
   mutate(Percent = round(100 * N / sum(N), 1)) %>%
   kable(
     col.names = c("Country of origin", "N", "%"),
-    caption = "Aim 1 cohort: country-of-origin codes matched to the codebook"
+    caption = "Country-of-origin codes matched to the codebook"
   )
 
 aim1 %>%
   mutate(nationality = coalesce(trimws(cmd_cond_chile_extranj), "Missing")) %>%
   count(country_status, nationality) %>%
   pivot_wider(names_from = nationality, values_from = n, values_fill = 0L) %>%
-  kable(caption = "Country of origin by registry nationality")
+  rename(`Country of origin` = country_status) %>%
+  kable(caption = "Country of origin by nationality")
 ```
 
 ## Country of origin by period
