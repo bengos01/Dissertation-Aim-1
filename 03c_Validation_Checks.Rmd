@@ -22,13 +22,11 @@ knitr::opts_chunk$set(
 )
 ```
 
-# Purpose
+# Franco suggested three checks before the Aim 1 models:
 
-Franco suggested three checks before the Aim 1 models:
-
-1. Count check. Following the Aim 1 steps for people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give close to the 14,410 confirmed cases in the urbanicity paper. A much lower count would mean the confirmed/discarded filters are losing cases.
-2. 2005. The GES guarantee for schizophrenia began on July 1, 2005, so 2005 is only half a year and may include a backlog of people who were already ill.
-3. Country of origin. Migration increased after 2015, mostly among young adults past the 15–19 peak age of onset. Check whether age at case creation still rises among people born in Chile.
+1. Count check: Following the Aim 1 steps for people born 1992–2012 and diagnosed 2005–2022, with no age limits, should give close to the 14,410 confirmed cases in the urbanicity paper. A much lower count would mean the confirmed/discarded filters are losing cases.
+2. Year 2005: The GES guarantee for schizophrenia began on July 1, 2005, so 2005 is only half a year and may include a backlog of people who were already ill.
+3. Country of origin: Migration increased after 2015, mostly among young adults past the 15–19 peak age of onset. Check whether age at case creation still rises among people born in Chile compared to outside of Chile
 
 ```{r import-data, include=FALSE}
 # ============================================================
