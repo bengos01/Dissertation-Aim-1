@@ -132,7 +132,7 @@ if (n_unreadable_dates > 0) {
 
 Same steps as Aim 1 (each person's earliest confirmed record), but for people born 1992–2012 and diagnosed 2005–2022, with no age limits.
 
-The extract has no date of birth, so birth year is estimated as **year of case creation − age at case creation**. Because age is in completed years, the true birth year could be one year earlier, so a possible range is also shown.
+Birth year is estimated as **year of case creation − age at case creation**. Because age is in completed years, birth year could be one year earlier, so a possible range is also shown.
 
 ```{r count-check}
 birth_window <- c(1992, 2012)
@@ -189,7 +189,7 @@ if (n_missing_age > 0) {
 
 ## By diagnosis year
 
-If the count is below 14,410, this shows whether the gap is spread evenly or concentrated in certain years.
+If count is below 14,410, this shows whether the gap is spread evenly or concentrated in certain years.
 
 ```{r count-by-year}
 check_cohort %>%
@@ -205,7 +205,7 @@ check_cohort %>%
 
 ## Registrations by month, 2004–2006
 
-All registry records, regardless of status, followed by Aim 1 index records.
+All registry records, regardless of status
 
 ```{r monthly-counts}
 monthly_all <- records %>%
@@ -283,7 +283,7 @@ aim1 %>%
 
 ## Does 2005 change the overall trend?
 
-Unadjusted linear trend in age at case creation (years of age per calendar year), with and without 2005. This is a quick check only, not the Aim 1 model.
+Unadjusted linear trend in age at case creation (years of age per calendar year), with and without 2005. 
 
 ```{r trend-without-2005}
 slope_row <- function(d, label) {
@@ -310,7 +310,7 @@ bind_rows(
 
 # Check 3: Trend by country of origin
 
-Country names come from the **Country Codes** sheet of the master codebook, as in 04. Country-of-origin code 0 is treated as missing (working assumption, 2026-11-20). The five most common countries other than Chile are shown separately; all others are grouped as "Other" to avoid very small cells.
+Country names come from the **Country Codes** sheet of the master codebook, as in 04. Country-of-origin code 0 is treated as missing. The five most common countries other than Chile are shown separately; all others are grouped as "Other"
 
 ```{r country-prep, include=FALSE}
 # Upper case, no accents, no extra spaces, so "Chile" matches "CHILE".
