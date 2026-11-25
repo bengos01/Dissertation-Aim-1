@@ -179,19 +179,6 @@ kable(
 )
 ```
 
-## By diagnosis year
-
-
-```{r count-by-year}
-check_cohort %>%
-  filter(in_main) %>%
-  count(creation_year, name = "N") %>%
-  kable(
-    col.names = c("Diagnosis year", "N"),
-    caption = "People born 1992-2012, by diagnosis year"
-  )
-```
-
 # Check 2: The 2005 half year
 
 ## Cases by month, 2004–2006
@@ -373,25 +360,6 @@ if (is.nan(share_chile) || share_chile < 0.5) {
   stop("Less than half of the cohort maps to Chile. ",
        "Check that the country codes in the data match the codebook.")
 }
-```
-
-## Codebook match
-
-```{r country-match}
-aim1 %>%
-  count(country_status, name = "N") %>%
-  mutate(Percent = round(100 * N / sum(N), 1)) %>%
-  kable(
-    col.names = c("Country of origin", "N", "%"),
-    caption = "Country-of-origin codes matched to the codebook"
-  )
-
-aim1 %>%
-  mutate(nationality = coalesce(trimws(cmd_cond_chile_extranj), "Missing")) %>%
-  count(country_status, nationality) %>%
-  pivot_wider(names_from = nationality, values_from = n, values_fill = 0L) %>%
-  rename(`Country of origin` = country_status) %>%
-  kable(caption = "Country of origin by nationality")
 ```
 
 ## Country of origin by period
