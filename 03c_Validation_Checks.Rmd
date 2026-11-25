@@ -196,7 +196,7 @@ check_cohort %>%
 
 ## Cases by month, 2004–2006
 
-All records by month, with the Aim 1 cohort (ages 15–65) alongside.
+All records by month, with the Aim 1 cohort (ages 15–65)
 
 ```{r monthly-counts}
 monthly_all <- records %>%
@@ -301,7 +301,7 @@ bind_rows(
 
 # Check 3: Trend by country of origin
 
-Country names are from the Country Codes sheet of the codebook. Code 0 is treated as missing. The five most common countries after Chile are shown; the rest are grouped as Other.
+The five most common countries after Chile are shown; the rest are grouped as Other.
 
 ```{r country-prep, include=FALSE}
 # Upper case, no accents, no extra spaces, so "Chile" matches "CHILE".
@@ -376,8 +376,6 @@ if (is.nan(share_chile) || share_chile < 0.5) {
 ```
 
 ## Codebook match
-
-Codes not found in the codebook would show up here. Country of origin is also compared with the nationality variable.
 
 ```{r country-match}
 aim1 %>%
